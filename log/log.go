@@ -65,7 +65,7 @@ func OpenReadWriteLogSegment(filename string, capacity int) (FileSegment, error)
 }
 
 func (this *FileSegment) Close() {
-	this.Close()
+	this.file.Close()
 }
 
 func (this *FileSegment) WriteBytes(data []byte) (int, error) {
