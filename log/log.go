@@ -68,7 +68,7 @@ func (this *FileSegment) Close() {
 	this.file.Close()
 }
 
-func (this *FileSegment) WriteBytes(data []byte) (int, error) {
+func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	if len(data) == 0 {
 		return 0, fmt.Errorf("data length is zero")
 	}
@@ -76,21 +76,20 @@ func (this *FileSegment) WriteBytes(data []byte) (int, error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	dataLength := len(data)
-	written_len := copy(this.fileBuffer, data)
-	if written_len != dataLength {
+	written_len := copy(this.fileBuffer, data[:length])
+	if written_len != length {
 		return 0, fmt.Errorf("data length copied is not equal to source length")
 	}
-	this.dataWritten += dataLength
+	this.dataWritten += length
 
 	return written_len, nil
 }
 
-func (this *FileSegment) WriteInt32(data int32) {
+func (this *FileSegment) AppendInt32(data int32) {
 
 }
 
-func (this *FileSegment) WriteInt64(data int64) {
+func (this *FileSegment) AppendInt64(data int64) {
 
 }
 
