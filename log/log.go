@@ -46,7 +46,7 @@ func CreateLogSegment(filename string, capacity int) error {
 		return err
 	}
 
-	err = file.Truncate(int64(capacity))
+	err = syscall.Fallocate(int(file.Fd()), 0, 0, int64(capacity))
 	if err != nil {
 		return err
 	}
