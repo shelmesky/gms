@@ -7,7 +7,7 @@ import (
 
 func main() {
 	log := disklog.DiskLog{}
-	log.Init()
-	
+	log.Init("./data-dir")
+
 	fmt.Println("hello world")
 }
