@@ -3,6 +3,7 @@ package disklog
 import (
 	"encoding/binary"
 	"fmt"
+	"github.com/shelmesky/gms/utils"
 	"io/ioutil"
 	"os"
 	"reflect"
@@ -116,7 +117,11 @@ func (this *FileSegment) Close() error {
 
 func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	if len(data) == 0 {
-		return 0, fmt.Errorf("data length is zero")
+		return 0, utils.ZeroLengthError
+	}
+
+	if len(data) > (this.Capacity() - this.Used()) {
+		return 0, utils.TooLargeLengthError
 	}
 
 	this.lock.Lock()
@@ -124,7 +129,7 @@ func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 
 	written_len := copy(this.fileBuffer[this.dataWritten:], data[:length])
 	if written_len != length {
-		return 0, fmt.Errorf("data length copied is not equal to source length")
+		return 0, utils.CopyNotEnoughError
 	}
 	this.dataWritten += length
 
@@ -148,7 +153,7 @@ func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
 
 	dataCopied := copy(result, this.fileBuffer[offset:offset+length])
 	if dataCopied != length {
-		return result, fmt.Errorf("ReadBytes() cat not read enough bytes")
+		return result, utils.CopyNotEnoughError
 	}
 
 	return result, nil
@@ -184,7 +189,7 @@ type LogIndexSegment struct {
 }
 
 type DiskLog struct {
-	dirname       string
+	dirName       string
 	segments      []LogIndexSegment
 	activeSegment LogIndexSegment
 	lock          sync.RWMutex
@@ -194,8 +199,8 @@ func (log *DiskLog) NewSegment() LogIndexSegment {
 
 }
 
-func (log *DiskLog) Init(dirname string) error {
-	files, err := ioutil.ReadDir(dirname)
+func (log *DiskLog) Init(dirName string) error {
+	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		return err
 	}
