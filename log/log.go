@@ -179,14 +179,19 @@ func (this *FileSegment) Used() int {
 }
 
 type LogIndexSegment struct {
-	Log   FileSegment
-	Index FileSegment
+	Log   FileSegment // log文件
+	Index FileSegment // index文件
 }
 
 type DiskLog struct {
 	dirname       string
 	segments      []LogIndexSegment
 	activeSegment LogIndexSegment
+	lock          sync.RWMutex
+}
+
+func (log *DiskLog) NewSegment() LogIndexSegment {
+
 }
 
 func (log *DiskLog) Init(dirname string) error {
