@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	filename := "./00000001.log"
+	filename := "./0000000000000000000.log"
 	capacity := 1024*1024* 1024
 	var offset int = 0
 
