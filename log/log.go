@@ -185,6 +185,10 @@ func (this *FileSegment) ReadUInt64(offset int) (uint64, error) {
 	return binary.LittleEndian.Uint64(bytesRead), nil
 }
 
+func (this *FileSegment) SendBytesToSock(sockFD int, offset *int64, length int) {
+	syscall.Sendfile(sockFD, int(this.file.Fd()), offset, length)
+}
+
 func (this *FileSegment) Capacity() int {
 	return this.size
 }
