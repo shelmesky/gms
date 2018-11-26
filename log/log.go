@@ -1,6 +1,7 @@
 package disklog
 
 import (
+	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -22,6 +23,7 @@ type FileSegment struct {
 
 func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error) {
 	var logSegment FileSegment
+	var prot int
 
 	logSegment.filename = filename
 
@@ -33,8 +35,13 @@ func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error)
 	logSegment.file = file
 	logSegment.size = capacity
 
-	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity),
-		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if flag == 0x00 {
+		prot = syscall.PROT_READ
+	} else {
+		prot = syscall.PROT_READ | syscall.PROT_WRITE
+	}
+
+	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity), prot, syscall.MAP_SHARED)
 
 	if err != nil {
 		return logSegment, err
@@ -124,12 +131,16 @@ func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	return written_len, nil
 }
 
-func (this *FileSegment) AppendInt32(data int32) {
-
+func (this *FileSegment) AppendUInt32(data uint32) (int, error) {
+	bs := make([]byte, 4)
+	binary.LittleEndian.PutUint32(bs, data)
+	return this.AppendBytes(bs, 4)
 }
 
-func (this *FileSegment) AppendInt64(data int64) {
-
+func (this *FileSegment) AppendUInt64(data uint64) (int, error) {
+	bs := make([]byte, 8)
+	binary.LittleEndian.PutUint64(bs, data)
+	return this.AppendBytes(bs, 8)
 }
 
 func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
@@ -143,12 +154,20 @@ func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
 	return result, nil
 }
 
-func (this *FileSegment) ReadInt32(offset int) int32 {
-	return 0
+func (this *FileSegment) ReadUInt32(offset int) (uint32, error) {
+	bytesRead, err := this.ReadBytes(offset, 4)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint32(bytesRead), nil
 }
 
-func (this *FileSegment) ReadInt64(offset int) int64 {
-	return 0
+func (this *FileSegment) ReadUInt64(offset int) (uint64, error) {
+	bytesRead, err := this.ReadBytes(offset, 8)
+	if err != nil {
+		return 0, err
+	}
+	return binary.LittleEndian.Uint64(bytesRead), nil
 }
 
 func (this *FileSegment) Capacity() int {
@@ -159,10 +178,15 @@ func (this *FileSegment) Used() int {
 	return this.dataWritten
 }
 
+type LogIndexSegment struct {
+	Log   FileSegment
+	Index FileSegment
+}
+
 type DiskLog struct {
 	dirname       string
-	segments      []FileSegment
-	activeSegment FileSegment
+	segments      []LogIndexSegment
+	activeSegment LogIndexSegment
 }
 
 func (log *DiskLog) Init(dirname string) error {
