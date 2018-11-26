@@ -116,7 +116,7 @@ func (this *FileSegment) Close() error {
 }
 
 func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
-	if len(data) == 0 {
+	if len(data) <= 0 {
 		return 0, utils.ZeroLengthError
 	}
 
@@ -149,7 +149,17 @@ func (this *FileSegment) AppendUInt64(data uint64) (int, error) {
 }
 
 func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
-	result := make([]byte, length)
+	var result []byte
+
+	if length <= 0 {
+		return result, utils.ZeroLengthError
+	}
+
+	if length > this.Capacity() {
+		return result, utils.TooLargeLengthError
+	}
+
+	result = make([]byte, length)
 
 	dataCopied := copy(result, this.fileBuffer[offset:offset+length])
 	if dataCopied != length {
