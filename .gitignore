@@ -1,4 +1,5 @@
 main
 *.log
+*.index
 *.db
 *.temp
