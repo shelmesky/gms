@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
 	"os"
+	"time"
 )
 
 func main() {
 	filename := "./00000001.log"
-	capacity := 1024*1024*1
+	capacity := 1024*1024* 1024
 
 	log := disklog.DiskLog{}
 	log.Init("./data-dir")
@@ -28,7 +29,12 @@ func main() {
 	dataLength := len(data)
 	logSegment.AppendBytes(data, dataLength)
 	fmt.Println("data written:", logSegment.Used())
-	logSegment.Close()
+	err = logSegment.Force()
+	if err != nil {
+		fmt.Println("sync memory data to disk failed:", err)
+	}
+
+	time.Sleep(time.Second * 60)
 
 	fmt.Println("hello world")
 }

@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"sync"
 	"syscall"
+	"unsafe"
 )
 
 type FileSegment struct {
@@ -33,6 +35,12 @@ func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error)
 
 	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity),
 		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+
+	if err != nil {
+		return logSegment, err
+	}
+
+	err = syscall.Madvise(logSegment.fileBuffer, syscall.MADV_SEQUENTIAL)
 
 	if err != nil {
 		return logSegment, err
@@ -67,6 +75,28 @@ func OpenRDOnlyLogSegment(filename string, capacity int) (FileSegment, error) {
 
 func OpenReadWriteLogSegment(filename string, capacity int) (FileSegment, error) {
 	return NewLogSegment(filename, os.O_RDWR, capacity)
+}
+
+func (this *FileSegment) BufferHeader() *reflect.SliceHeader {
+	return (*reflect.SliceHeader)(unsafe.Pointer(&this.fileBuffer))
+}
+
+func (this *FileSegment) Force() error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	header := this.BufferHeader()
+
+	syncAddr := header.Data + uintptr(this.dataCommitted)
+	syncLength := uintptr(this.dataWritten - this.dataCommitted)
+	_, _, err := syscall.Syscall(syscall.SYS_MSYNC, syncAddr, syncLength, syscall.MS_SYNC)
+	if err != 0 {
+		return fmt.Errorf(err.Error())
+	}
+
+	this.dataCommitted = this.dataWritten
+
+	return nil
 }
 
 func (this *FileSegment) Close() error {
