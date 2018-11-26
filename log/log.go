@@ -132,8 +132,15 @@ func (this *FileSegment) AppendInt64(data int64) {
 
 }
 
-func (this *FileSegment) ReadBytes(target []byte, offset int, length int) {
+func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
+	result := make([]byte, length)
 
+	dataCopied := copy(result, this.fileBuffer[offset:offset+length])
+	if dataCopied != length {
+		return result, fmt.Errorf("ReadBytes() cat not read enough bytes")
+	}
+
+	return result, nil
 }
 
 func (this *FileSegment) ReadInt32(offset int) int32 {
