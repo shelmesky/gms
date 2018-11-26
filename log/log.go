@@ -9,12 +9,13 @@ import (
 )
 
 type FileSegment struct {
-	filename    string       // 文件名
-	size        int          // 文件大小
-	file        *os.File     // 文件对象
-	fileBuffer  []byte       // mmap映射的内存区域
-	dataWritten int          // 已经写入的数据大小
-	lock        sync.RWMutex // 写入锁
+	filename      string       // 文件名
+	size          int          // 文件大小
+	file          *os.File     // 文件对象
+	fileBuffer    []byte       // mmap映射的内存区域
+	dataWritten   int          // 已经写入的数据大小
+	dataCommitted int          // 已经提交到持久存储的大小
+	lock          sync.RWMutex // 写入锁
 }
 
 func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error) {
@@ -31,7 +32,7 @@ func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error)
 	logSegment.size = capacity
 
 	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity),
-		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_PRIVATE)
+		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 
 	if err != nil {
 		return logSegment, err
@@ -41,19 +42,23 @@ func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error)
 }
 
 func CreateLogSegment(filename string, capacity int) error {
-	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
-	if err != nil {
-		return err
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+		if err != nil {
+			return err
+		}
+
+		err = syscall.Fallocate(int(file.Fd()), 0, 0, int64(capacity))
+		if err != nil {
+			return err
+		}
+
+		file.Close()
+
+		return nil
 	}
 
-	err = syscall.Fallocate(int(file.Fd()), 0, 0, int64(capacity))
-	if err != nil {
-		return err
-	}
-
-	file.Close()
-
-	return nil
+	return os.ErrExist
 }
 
 func OpenRDOnlyLogSegment(filename string, capacity int) (FileSegment, error) {
@@ -64,8 +69,12 @@ func OpenReadWriteLogSegment(filename string, capacity int) (FileSegment, error)
 	return NewLogSegment(filename, os.O_RDWR, capacity)
 }
 
-func (this *FileSegment) Close() {
-	this.file.Close()
+func (this *FileSegment) Close() error {
+	err := syscall.Munmap(this.fileBuffer)
+	if err != nil {
+		return err
+	}
+	return this.file.Close()
 }
 
 func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
@@ -76,7 +85,7 @@ func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
-	written_len := copy(this.fileBuffer, data[:length])
+	written_len := copy(this.fileBuffer[this.dataWritten:], data[:length])
 	if written_len != length {
 		return 0, fmt.Errorf("data length copied is not equal to source length")
 	}
