@@ -196,7 +196,8 @@ type DiskLog struct {
 }
 
 func (log *DiskLog) NewSegment() LogIndexSegment {
-
+	var logIndexSeg LogIndexSegment
+	return logIndexSeg
 }
 
 func (log *DiskLog) Init(dirName string) error {
