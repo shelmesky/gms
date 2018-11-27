@@ -214,6 +214,36 @@ type LogIndexSegment struct {
 	lock           sync.RWMutex  // 读写锁
 }
 
+func (this *LogIndexSegment) Open(filename string, writable bool, capacity int) error {
+	var file FileSegment
+	var err error
+
+	if writable {
+		file, err = OpenReadWriteLogSegment(filename + ".log", capacity)
+		if err != nil {
+			return err
+		}
+		this.Log = file
+
+		file, err = OpenReadWriteLogSegment(filename + ".index", capacity)
+		if err != nil {
+			return err
+		}
+		this.Index = file
+	} else {
+		file, err = OpenRDOnlyLogSegment(filename + ".log", capacity)
+		if err != nil {
+			return err
+		}
+		this.Log = file
+
+		file, err = OpenRDOnlyLogSegment(filename + ".index", capacity)
+		this.Index = file
+	}
+
+	return nil
+}
+
 func (this *LogIndexSegment) Search(offset int) {
 
 }
