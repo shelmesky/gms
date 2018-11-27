@@ -417,7 +417,7 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	indexRecord := IndexRecord{this.currentOffset, this.currentOffset}
 	this.indexList = append(this.indexList, indexRecord)
 
-	// 设置当前Log文件的便宜位置：
+	// 设置当前.log文件的偏移位置：
 	// 写入数据的长度+头部的offset和size字段长度
 	this.currentFilePos += length + MessageOffsetAndSizeField
 
