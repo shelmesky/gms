@@ -303,14 +303,17 @@ func (this *LogIndexSegment) LoadIndex() error {
 		lastOffset = int(offset)
 		lastMessagePos = int(messagePos)
 
+		// 将Index的记录插入IndexList，用于根据offset读取时的查找
 		indexRecord.offset = int(offset)
 		indexRecord.filePos = int(messagePos)
 		indexList = append(indexList, indexRecord)
 	}
 
+	// 设置当前Index文件最后的offset和文件位置
 	this.currentOffset = lastOffset
 	this.currentFilePos = lastMessagePos
 
+	// 设置Log文件的最后写入位置
 	if lastMessagePos > 0 {
 		this.Log.dataWritten = lastMessagePos + 17
 	}

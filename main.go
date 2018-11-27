@@ -7,10 +7,6 @@ import (
 	"time"
 )
 
-type Message struct {
-
-}
-
 func main() {
 	filename := "./0000000000000000000"
 	logCapacity := 1024 * 1024 * 2
@@ -37,7 +33,7 @@ func main() {
 func test_segment() {
 
 	filename := "./0000000000000000000.log"
-	capacity := 1024*1024* 2
+	capacity := 1024 * 1024 * 2
 	var offset int = 0
 
 	log := disklog.DiskLog{}
