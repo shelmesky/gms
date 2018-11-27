@@ -349,6 +349,9 @@ func (this *LogIndexSegment) LoadIndex() error {
 	// 设置.index记录中将来要记录的消息在.log文件中的开始位置
 	this.currentFilePos = logFileEndPos
 
+	// 设置索引记录的列表
+	this.indexList = indexList
+
 	return nil
 failed:
 	return utils.LoadIndexError
