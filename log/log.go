@@ -148,7 +148,7 @@ func (this *FileSegment) AppendUInt64(data uint64) (int, error) {
 	return this.AppendBytes(bs, 8)
 }
 
-func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
+func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 	var result []byte
 
 	if length <= 0 {
@@ -161,7 +161,7 @@ func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
 
 	result = make([]byte, length)
 
-	dataCopied := copy(result, this.fileBuffer[offset:offset+length])
+	dataCopied := copy(result, this.fileBuffer[pos:pos+length])
 	if dataCopied != length {
 		return result, utils.CopyNotEnoughError
 	}
@@ -169,16 +169,16 @@ func (this *FileSegment) ReadBytes(offset int, length int) ([]byte, error) {
 	return result, nil
 }
 
-func (this *FileSegment) ReadUInt32(offset int) (uint32, error) {
-	bytesRead, err := this.ReadBytes(offset, 4)
+func (this *FileSegment) ReadUInt32(pos int) (uint32, error) {
+	bytesRead, err := this.ReadBytes(pos, 4)
 	if err != nil {
 		return 0, err
 	}
 	return binary.LittleEndian.Uint32(bytesRead), nil
 }
 
-func (this *FileSegment) ReadUInt64(offset int) (uint64, error) {
-	bytesRead, err := this.ReadBytes(offset, 8)
+func (this *FileSegment) ReadUInt64(pos int) (uint64, error) {
+	bytesRead, err := this.ReadBytes(pos, 8)
 	if err != nil {
 		return 0, err
 	}
@@ -205,9 +205,10 @@ type IndexRecord struct {
 
 // Log和Index文件
 type LogIndexSegment struct {
-	Log            FileSegment // log文件
-	Index          FileSegment // index文件
-	opened         bool
+	Log            FileSegment   // log文件
+	Index          FileSegment   // index文件
+	fileOpened         bool          // 是否已打开
+	indexLoaded         bool          // 索引是否已载入
 	indexList      []IndexRecord // index文件在内存中的数据结构
 	startOffset    int           // 起始offset
 	currentOffset  int           // 当前最大的offset
@@ -246,7 +247,7 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 			return err
 		}
 
-		this.opened = true
+		this.fileOpened = true
 
 	} else {
 		this.Log, err = OpenRDOnlyLogSegment(filename+".log", logCapacity)
@@ -259,10 +260,53 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 			return err
 		}
 
-		this.opened = true
+		this.fileOpened = true
 	}
 
 	return nil
+}
+
+func (this *LogIndexSegment) LoadIndex() error {
+	var indexList []IndexRecord
+	var err error
+	var offset uint32
+	var messagePos uint32
+
+	pos := 0
+
+	for {
+		var indexRecord IndexRecord
+
+		offset, err = this.Index.ReadUInt32(pos)
+		if err != nil {
+			goto failed
+		}
+		pos += 4
+
+		messagePos, err = this.Index.ReadUInt32(pos)
+		if err != nil {
+			goto failed
+		}
+		pos += 4
+
+		if offset == 0 && messagePos == 0 {
+			break
+		}
+
+		indexRecord.offset = int(offset)
+		indexRecord.filePos = int(messagePos)
+
+		indexList = append(indexList, indexRecord)
+	}
+
+	this.currentOffset = int(offset)
+	this.currentFilePos = int(messagePos)
+
+	this.indexLoaded = true
+
+	return nil
+failed:
+	return utils.LoadIndexError
 }
 
 func (this *LogIndexSegment) Search(offset int) {
