@@ -165,6 +165,7 @@ func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 
 	result = make([]byte, length)
 
+	// TODO: 直接从fileBuffer中返回，不需要做copy
 	dataCopied := copy(result, this.fileBuffer[pos:pos+length])
 	if dataCopied != length {
 		return result, utils.CopyNotEnoughError
