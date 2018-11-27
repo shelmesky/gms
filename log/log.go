@@ -197,20 +197,75 @@ func (this *FileSegment) Used() int {
 	return this.dataWritten
 }
 
+// 内存中Index的一条记录
+type IndexRecord struct {
+	offset  int
+	filePos int
+}
+
+// Log和Index文件
 type LogIndexSegment struct {
-	Log   FileSegment // log文件
-	Index FileSegment // index文件
+	Log            FileSegment   // log文件
+	Index          FileSegment   // index文件
+	indexList      []IndexRecord // index文件在内存中的数据结构
+	startOffset    int           // 起始offset
+	currentOffset  int           // 当前最大的offset
+	currentFilePos int           // 当前活动文件的写入位置
+	lock           sync.RWMutex  // 读写锁
+}
+
+func (this *LogIndexSegment) Search(offset int) {
+
+}
+
+func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
+	// 在index中写入offset
+	this.currentOffset += 1
+	written, err := this.Index.AppendUInt32(uint32(this.currentOffset))
+	if err != nil {
+		return err
+	}
+
+	if written != 4 {
+		return utils.WrittenNotEnoughError
+	}
+
+	// 将数据写入到Log
+	written, err = this.Log.AppendBytes(data, length)
+	if err != nil {
+		return err
+	}
+
+	if written != length {
+		return utils.WrittenNotEnoughError
+	}
+
+	// 在Index中写入消息的文件位置
+	written, err = this.Index.AppendUInt32(uint32(this.currentFilePos))
+	if err != nil {
+		return err
+	}
+
+	if written != 4 {
+		return utils.WrittenNotEnoughError
+	}
+
+	indexRecord := IndexRecord{this.currentOffset, this.currentOffset}
+	this.indexList = append(this.indexList, indexRecord)
+
+	this.currentFilePos += length
+
+	return nil
 }
 
 // 管理partition对应目录下的所有文件
 type DiskLog struct {
-	dirName        string            // 目录名称
-	segments       []LogIndexSegment // 按照文件名排序的Segment
-	activeSegment  LogIndexSegment   // 当前活动的Segment
-	lock           sync.RWMutex      // 读写锁
-	indexMap       map[int]int       // index文件在内存中的数据结构
-	currentOffset  int               // 当前最大的offset
-	currentFilePos int               // 当前活动文件的写入位置
+	dirName       string            // 目录名称
+	segments      []LogIndexSegment // 按照文件名排序的Segment
+	activeSegment LogIndexSegment   // 当前活动的Segment
 }
 
 /*

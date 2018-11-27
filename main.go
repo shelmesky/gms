@@ -9,7 +9,7 @@ import (
 
 func main() {
 	filename := "./0000000000000000000.log"
-	capacity := 1024*1024* 1024
+	capacity := 1024*1024* 2
 	var offset int = 0
 
 	log := disklog.DiskLog{}
