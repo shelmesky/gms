@@ -8,6 +8,25 @@ import (
 )
 
 func main() {
+	filename := "./0000000000000000000"
+	logCapacity := 1024 * 1024 * 2
+	indexCapacity := 1024 * 1024 * 1
+
+	fmt.Println(disklog.CreateLogIndexSegmentFile(filename, logCapacity, indexCapacity))
+	var logIndexSegment disklog.LogIndexSegment
+	logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
+
+	data := "{'aaa': '111111'}"
+	data_len := len(data)
+	fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+
+	data = "{'bbb': '222222'}"
+	data_len = len(data)
+	fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+}
+
+func test_segment() {
+
 	filename := "./0000000000000000000.log"
 	capacity := 1024*1024* 2
 	var offset int = 0
@@ -15,7 +34,7 @@ func main() {
 	log := disklog.DiskLog{}
 	log.Init("./data-dir")
 
-	err := disklog.CreateLogSegment(filename, capacity)
+	err := disklog.CreateFile(filename, capacity)
 	if err != nil {
 		fmt.Println(err)
 	}

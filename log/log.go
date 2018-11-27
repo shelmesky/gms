@@ -12,6 +12,26 @@ import (
 	"unsafe"
 )
 
+func CreateFile(filename string, capacity int) error {
+	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
+		if err != nil {
+			return err
+		}
+
+		err = syscall.Fallocate(int(file.Fd()), 0, 0, int64(capacity))
+		if err != nil {
+			return err
+		}
+
+		file.Close()
+
+		return nil
+	}
+
+	return os.ErrExist
+}
+
 type FileSegment struct {
 	filename      string       // 文件名
 	size          int          // 文件大小
@@ -22,7 +42,7 @@ type FileSegment struct {
 	lock          sync.RWMutex // 写入锁
 }
 
-func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error) {
+func OpenFileSegment(filename string, flag int, capacity int) (FileSegment, error) {
 	var logSegment FileSegment
 	var prot int
 
@@ -57,32 +77,12 @@ func NewLogSegment(filename string, flag int, capacity int) (FileSegment, error)
 	return logSegment, nil
 }
 
-func CreateLogSegment(filename string, capacity int) error {
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
-		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
-		if err != nil {
-			return err
-		}
-
-		err = syscall.Fallocate(int(file.Fd()), 0, 0, int64(capacity))
-		if err != nil {
-			return err
-		}
-
-		file.Close()
-
-		return nil
-	}
-
-	return os.ErrExist
-}
-
 func OpenRDOnlyLogSegment(filename string, capacity int) (FileSegment, error) {
-	return NewLogSegment(filename, os.O_RDONLY, capacity)
+	return OpenFileSegment(filename, os.O_RDONLY, capacity)
 }
 
 func OpenReadWriteLogSegment(filename string, capacity int) (FileSegment, error) {
-	return NewLogSegment(filename, os.O_RDWR, capacity)
+	return OpenFileSegment(filename, os.O_RDWR, capacity)
 }
 
 func (this *FileSegment) BufferHeader() *reflect.SliceHeader {
@@ -205,8 +205,9 @@ type IndexRecord struct {
 
 // Log和Index文件
 type LogIndexSegment struct {
-	Log            FileSegment   // log文件
-	Index          FileSegment   // index文件
+	Log            FileSegment // log文件
+	Index          FileSegment // index文件
+	opened         bool
 	indexList      []IndexRecord // index文件在内存中的数据结构
 	startOffset    int           // 起始offset
 	currentOffset  int           // 当前最大的offset
@@ -214,31 +215,51 @@ type LogIndexSegment struct {
 	lock           sync.RWMutex  // 读写锁
 }
 
-func (this *LogIndexSegment) Open(filename string, writable bool, capacity int) error {
-	var file FileSegment
+func CreateLogIndexSegmentFile(filename string, logCapacity, indexCapacity int) error {
+	err := CreateFile(filename+".log", logCapacity)
+	if err != nil {
+		return err
+	}
+
+	err = CreateFile(filename+".index", indexCapacity)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, indexCapacity int) error {
 	var err error
 
+	this.lock.Lock()
+	defer this.lock.Unlock()
+
 	if writable {
-		file, err = OpenReadWriteLogSegment(filename + ".log", capacity)
+		this.Log, err = OpenReadWriteLogSegment(filename+".log", logCapacity)
 		if err != nil {
 			return err
 		}
-		this.Log = file
 
-		file, err = OpenReadWriteLogSegment(filename + ".index", capacity)
+		this.Index, err = OpenReadWriteLogSegment(filename+".index", indexCapacity)
 		if err != nil {
 			return err
 		}
-		this.Index = file
+
+		this.opened = true
+
 	} else {
-		file, err = OpenRDOnlyLogSegment(filename + ".log", capacity)
+		this.Log, err = OpenRDOnlyLogSegment(filename+".log", logCapacity)
 		if err != nil {
 			return err
 		}
-		this.Log = file
 
-		file, err = OpenRDOnlyLogSegment(filename + ".index", capacity)
-		this.Index = file
+		this.Index, err = OpenRDOnlyLogSegment(filename+".index", indexCapacity)
+		if err != nil {
+			return err
+		}
+
+		this.opened = true
 	}
 
 	return nil
@@ -306,8 +327,9 @@ type DiskLog struct {
 3. 关闭ActiveSegment
 4. 把新的Segment作为ActiveSegment
 */
-func (log *DiskLog) NewSegment() LogIndexSegment {
+func (log *DiskLog) CreateSegment(filename string, logCapacity, indexCapacity int) LogIndexSegment {
 	var logIndexSeg LogIndexSegment
+
 	return logIndexSeg
 }
 
