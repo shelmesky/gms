@@ -12,6 +12,10 @@ import (
 	"unsafe"
 )
 
+const (
+	MessageOffsetAndSizeField = 8
+)
+
 func CreateFile(filename string, capacity int) error {
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0664)
@@ -266,11 +270,29 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 	return nil
 }
 
-// 从文件载入索引记录到内存数据
+/*
+从文件载入索引记录到内存数据
+索引在文件中的记录格式为:
+1, 21
+2, 39
+3, 83
+N, ....
+
+每条记录第一个数据为消息的offset，即消息序号
+第二个字段为消息存储在Log文件中开始的位置
+
+日志在文件中的格式为:
+offset uint32
+size   uint32
+body   N bytes
+*/
 func (this *LogIndexSegment) LoadIndex() error {
 	var indexList []IndexRecord
 	var lastOffset int
 	var lastMessagePos int
+	var lastMessageSize uint32
+	var logFileEndPos int
+	var err error
 
 	pos := 0
 
@@ -311,12 +333,21 @@ func (this *LogIndexSegment) LoadIndex() error {
 
 	// 设置当前Index文件最后的offset和文件位置
 	this.currentOffset = lastOffset
-	this.currentFilePos = lastMessagePos
 
-	// 设置Log文件的最后写入位置
-	if lastMessagePos > 0 {
-		this.Log.dataWritten = lastMessagePos + 17
+	// 读取最后一条消息的大小到lastMessageSize
+	lastMessageSize, err = this.Log.ReadUInt32(lastMessagePos + 4)
+	if err != nil {
+		goto failed
 	}
+
+	// 在.log文件中最后一条消息的文件位置等于：
+	// index记录中最后一条消息的开始位置 + log文件中获取到的最后一条消息的大小 + 消息头部的8字节(两个字段)
+	logFileEndPos = lastMessagePos + int(lastMessageSize) + MessageOffsetAndSizeField
+
+	// 设置.log文件最后的写入位置
+	this.Log.dataWritten = logFileEndPos
+	// 设置.index记录中将来要记录的消息在.log文件中的开始位置
+	this.currentFilePos = logFileEndPos
 
 	return nil
 failed:
@@ -334,6 +365,26 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	// 在index中写入offset
 	this.currentOffset += 1
 	written, err := this.Index.AppendUInt32(uint32(this.currentOffset))
+	if err != nil {
+		return err
+	}
+
+	if written != 4 {
+		return utils.WrittenNotEnoughError
+	}
+
+	// 将offset写入到Log
+	written, err = this.Log.AppendUInt32(uint32(this.currentOffset))
+	if err != nil {
+		return err
+	}
+
+	if written != 4 {
+		return utils.WrittenNotEnoughError
+	}
+
+	// 将消息长度写入到Log
+	written, err = this.Log.AppendUInt32(uint32(length))
 	if err != nil {
 		return err
 	}
@@ -362,10 +413,13 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 		return utils.WrittenNotEnoughError
 	}
 
+	// 每插入一条数据就在内存的IndexList中追加索引记录
 	indexRecord := IndexRecord{this.currentOffset, this.currentOffset}
 	this.indexList = append(this.indexList, indexRecord)
 
-	this.currentFilePos += length
+	// 设置当前Log文件的便宜位置：
+	// 写入数据的长度+头部的offset和size字段长度
+	this.currentFilePos += length + MessageOffsetAndSizeField
 
 	return nil
 }

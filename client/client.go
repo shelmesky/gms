@@ -3,8 +3,6 @@ package client
 import "bytes"
 
 type Message struct {
-	offset       int    // offset
-	size         int    // 消息大小
 	crc32        int    // crc32校验
 	magic        byte   // magic数字
 	attributes   byte   // 属性组合
@@ -23,4 +21,11 @@ func (this *Message) Bytes() []byte {
 	var buffer bytes.Buffer
 
 	return buffer.Bytes()
+}
+
+
+func GetDemoMessage() []byte {
+	message := NewMessage()
+
+	return message.Bytes()
 }
