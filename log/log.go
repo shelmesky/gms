@@ -207,12 +207,12 @@ type IndexRecord struct {
 type LogIndexSegment struct {
 	Log            FileSegment   // log文件
 	Index          FileSegment   // index文件
-	fileOpened         bool          // 是否已打开
-	indexLoaded         bool          // 索引是否已载入
+	fileOpened     bool          // 是否已打开
+	indexLoaded    bool          // 索引是否已载入
 	indexList      []IndexRecord // index文件在内存中的数据结构
 	startOffset    int           // 起始offset
-	currentOffset  int           // 当前最大的offset
-	currentFilePos int           // 当前活动文件的写入位置
+	currentOffset  int           // 当前最大的offset，写入索引记录时用
+	currentFilePos int           // 当前活动文件的写入位置，写入索引记录时用
 	lock           sync.RWMutex  // 读写锁
 }
 
@@ -266,43 +266,54 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 	return nil
 }
 
+// 从文件载入索引记录到内存数据
 func (this *LogIndexSegment) LoadIndex() error {
 	var indexList []IndexRecord
-	var err error
-	var offset uint32
-	var messagePos uint32
+	var lastOffset int
+	var lastMessagePos int
 
 	pos := 0
 
 	for {
 		var indexRecord IndexRecord
 
-		offset, err = this.Index.ReadUInt32(pos)
+		// 读取4字节的offset
+		offset, err := this.Index.ReadUInt32(pos)
 		if err != nil {
 			goto failed
 		}
 		pos += 4
 
-		messagePos, err = this.Index.ReadUInt32(pos)
+		// 读取4字节的文件位置
+		messagePos, err := this.Index.ReadUInt32(pos)
 		if err != nil {
 			goto failed
 		}
 		pos += 4
 
+		// 如果读取到的offset和messagePos都为0
+		// 说明读到了索引文件的末尾
 		if offset == 0 && messagePos == 0 {
+			// 设置index文件的最后写入位置
+			// 当最后检测到两个字段都为0,要回退8个字节
+			this.Index.dataWritten = pos - 8
 			break
 		}
 
+		lastOffset = int(offset)
+		lastMessagePos = int(messagePos)
+
 		indexRecord.offset = int(offset)
 		indexRecord.filePos = int(messagePos)
-
 		indexList = append(indexList, indexRecord)
 	}
 
-	this.currentOffset = int(offset)
-	this.currentFilePos = int(messagePos)
+	this.currentOffset = lastOffset
+	this.currentFilePos = lastMessagePos
 
-	this.indexLoaded = true
+	if lastMessagePos > 0 {
+		this.Log.dataWritten = lastMessagePos + 17
+	}
 
 	return nil
 failed:

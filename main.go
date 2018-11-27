@@ -7,6 +7,10 @@ import (
 	"time"
 )
 
+type Message struct {
+
+}
+
 func main() {
 	filename := "./0000000000000000000"
 	logCapacity := 1024 * 1024 * 2
@@ -15,6 +19,11 @@ func main() {
 	fmt.Println(disklog.CreateLogIndexSegmentFile(filename, logCapacity, indexCapacity))
 	var logIndexSegment disklog.LogIndexSegment
 	logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
+	err := logIndexSegment.LoadIndex()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
 	data := "{'aaa': '111111'}"
 	data_len := len(data)
