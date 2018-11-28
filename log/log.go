@@ -163,15 +163,7 @@ func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 		return result, utils.TooLargeLengthError
 	}
 
-	result = make([]byte, length)
-
-	// TODO: 直接从fileBuffer中返回，不需要做copy
-	dataCopied := copy(result, this.fileBuffer[pos:pos+length])
-	if dataCopied != length {
-		return result, utils.CopyNotEnoughError
-	}
-
-	return result, nil
+	return this.fileBuffer[pos:pos+length], nil
 }
 
 func (this *FileSegment) ReadUInt32(pos int) (uint32, error) {
