@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
+	"github.com/shelmesky/gms/utils"
 	"os"
 	"time"
 )
@@ -16,7 +17,7 @@ func main() {
 	var logIndexSegment disklog.LogIndexSegment
 	logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
 	err := logIndexSegment.LoadIndex()
-	if err != nil {
+	if  err != nil && err != utils.EmptyIndexFile {
 		fmt.Println(err)
 		os.Exit(1)
 	}

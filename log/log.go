@@ -332,28 +332,32 @@ func (this *LogIndexSegment) LoadIndex() error {
 		indexList = append(indexList, indexRecord)
 	}
 
-	// 设置当前Index文件最后的offset和文件位置
-	this.currentOffset = lastOffset
+	if len(indexList) > 0 {
+		// 设置当前Index文件最后的offset和文件位置
+		this.currentOffset = lastOffset
 
-	// 读取最后一条消息的大小到lastMessageSize
-	lastMessageSize, err = this.Log.ReadUInt32(lastMessagePos + 4)
-	if err != nil {
-		goto failed
+		// 读取最后一条消息的大小到lastMessageSize
+		lastMessageSize, err = this.Log.ReadUInt32(lastMessagePos + 4)
+		if err != nil {
+			goto failed
+		}
+
+		// 在.log文件中最后一条消息的文件位置等于：
+		// index记录中最后一条消息的开始位置 + log文件中获取到的最后一条消息的大小 + 消息头部的8字节(两个字段)
+		logFileEndPos = lastMessagePos + int(lastMessageSize) + MessageOffsetAndSizeField
+
+		// 设置.log文件最后的写入位置
+		this.Log.dataWritten = logFileEndPos
+		// 设置.index记录中将来要记录的消息在.log文件中的开始位置
+		this.currentFilePos = logFileEndPos
+
+		// 设置索引记录的列表
+		this.indexList = indexList
+
+		return nil
+	} else {
+		return utils.EmptyIndexFile
 	}
-
-	// 在.log文件中最后一条消息的文件位置等于：
-	// index记录中最后一条消息的开始位置 + log文件中获取到的最后一条消息的大小 + 消息头部的8字节(两个字段)
-	logFileEndPos = lastMessagePos + int(lastMessageSize) + MessageOffsetAndSizeField
-
-	// 设置.log文件最后的写入位置
-	this.Log.dataWritten = logFileEndPos
-	// 设置.index记录中将来要记录的消息在.log文件中的开始位置
-	this.currentFilePos = logFileEndPos
-
-	// 设置索引记录的列表
-	this.indexList = indexList
-
-	return nil
 failed:
 	return utils.LoadIndexError
 }
