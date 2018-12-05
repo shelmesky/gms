@@ -18,6 +18,7 @@ import (
 
 const (
 	MessageOffsetAndSizeField = 8
+	IndexEntrySize            = 8
 )
 
 func CreateFile(filename string, capacity int) error {
@@ -387,7 +388,7 @@ failed:
 }
 
 func (this *LogIndexSegment) GetIndexEntry(offset int) int {
-	ret, err := this.Index.ReadUInt32(offset * 8)
+	ret, err := this.Index.ReadUInt32(offset * IndexEntrySize)
 	if err != nil {
 		panic("read uint32 from index file failed")
 	}
