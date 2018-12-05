@@ -224,6 +224,7 @@ type LogIndexSegment struct {
 	indexLoaded    bool          // 索引是否已载入
 	indexList      []IndexRecord // index文件在内存中的数据结构
 	startOffset    int           // 起始offset
+	entrySize      int           // 当前index总的条目数量
 	currentOffset  int           // 当前最大的offset，写入索引记录时用
 	currentFilePos int           // 当前活动文件的写入位置，写入索引记录时用
 	lock           sync.RWMutex  // 读写锁
@@ -336,6 +337,9 @@ func (this *LogIndexSegment) LoadIndex() error {
 			break
 		}
 
+		// 增加index的记录数量
+		this.entrySize += 1
+
 		lastOffset = int(offset)
 		lastMessagePos = int(messagePos)
 
@@ -376,7 +380,9 @@ failed:
 }
 
 func (this *LogIndexSegment) Search(offset int) {
-
+	binarySearch := func(begin, end int) (int, int) {
+		return 0, 0
+	}
 }
 
 func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
@@ -441,6 +447,9 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	// 设置当前.log文件的偏移位置：
 	// 写入数据的长度+头部的offset和size字段长度
 	this.currentFilePos += length + MessageOffsetAndSizeField
+
+	// 增加index的记录数量
+	this.entrySize += 1
 
 	return nil
 }
