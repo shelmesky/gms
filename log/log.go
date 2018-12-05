@@ -7,6 +7,8 @@ import (
 	"io/ioutil"
 	"os"
 	"reflect"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"unsafe"
@@ -163,7 +165,7 @@ func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 		return result, utils.TooLargeLengthError
 	}
 
-	return this.fileBuffer[pos:pos+length], nil
+	return this.fileBuffer[pos : pos+length], nil
 }
 
 func (this *FileSegment) ReadUInt32(pos int) (uint32, error) {
@@ -198,6 +200,20 @@ func (this *FileSegment) Used() int {
 type IndexRecord struct {
 	offset  int
 	filePos int
+}
+
+func FilenameToOffset(filename string) (int, error) {
+	return strconv.Atoi(filename)
+}
+
+func OffsetToFilename(offset int) string {
+	filename := strconv.Itoa(offset)
+	filenameLength := len(filename)
+	if filenameLength > 10 {
+		filenameLength = 10
+	}
+	filename = strings.Repeat("0", 10-filenameLength) + filename
+	return filename
 }
 
 // Log和Index文件
@@ -258,6 +274,11 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 		}
 
 		this.fileOpened = true
+	}
+
+	this.startOffset, err = FilenameToOffset(filename)
+	if err != nil {
+		return err
 	}
 
 	return nil
