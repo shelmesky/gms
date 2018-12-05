@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"github.com/shelmesky/gms/utils"
 	"io/ioutil"
+	"math"
 	"os"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -227,6 +229,7 @@ type LogIndexSegment struct {
 	entrySize      int           // 当前index总的条目数量
 	currentOffset  int           // 当前最大的offset，写入索引记录时用
 	currentFilePos int           // 当前活动文件的写入位置，写入索引记录时用
+	warmEntries    int           // 在内核page cache中的索引数量
 	lock           sync.RWMutex  // 读写锁
 }
 
@@ -277,10 +280,14 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 		this.fileOpened = true
 	}
 
-	this.startOffset, err = FilenameToOffset(filename)
+	// 根据文件名获取初始的offset
+	this.startOffset, err = FilenameToOffset(path.Clean(filename))
 	if err != nil {
 		return err
 	}
+
+	// 设置warm section的范围
+	this.warmEntries = 8192
 
 	return nil
 }
@@ -379,15 +386,86 @@ failed:
 	return utils.LoadIndexError
 }
 
-func (this *LogIndexSegment) Search(offset int) {
-	binarySearch := func(begin, end int) (int, int) {
-		return 0, 0
+func (this *LogIndexSegment) GetIndexEntry(offset int) int {
+	ret, err := this.Index.ReadUInt32(offset * 8)
+	if err != nil {
+		panic("read uint32 from index file failed")
 	}
+	return int(ret)
+}
+
+func compareIndexEntry(found, offset int) int {
+	if found > offset {
+		return 1
+	}
+	if found < offset {
+		return -1
+	}
+
+	return 0
+}
+
+func (this *LogIndexSegment) SearchIndex(offset int) (int, int) {
+	binarySearch := func(begin, end int) (int, int) {
+		var lo = begin
+		var hi = end
+		for {
+			if lo >= hi {
+				break
+			}
+
+			mid := int(math.Ceil(float64(hi)/2.0 + float64(lo)/2.0))
+			found := this.GetIndexEntry(mid)
+			compareResult := compareIndexEntry(found, offset)
+			if compareResult > 0 {
+				hi = mid - 1
+			} else if compareResult < 0 {
+				lo = mid
+			} else {
+				return mid, mid
+			}
+		}
+
+		var upperBound int
+		if lo == this.entrySize-1 {
+			upperBound = -1
+		} else {
+			upperBound = lo + 1
+		}
+
+		return lo, upperBound
+	}
+
+	/*
+		firstHotEntry的结果有两种情况，一种为0,另一种为非0。
+		为0时，说明index的数量小于8192，此时从文件的开始处搜索，直到文件结束。
+		不为0时，又分两种情况，第一种是小于offset，此时搜索的范围在warm section内，
+		即从firstHotEntry开始到文件结束，这样缩小了二分查找的范围
+		第二种是大于offset，说明offset不在warm section范围内，
+		则从文件开始处搜索，直到firstHotEntry的位置。
+	*/
+
+	firstHotEntry := int(math.Max(0, float64(this.entrySize-1-this.warmEntries)))
+	if compareIndexEntry(this.GetIndexEntry(firstHotEntry), offset) < 0 {
+		return binarySearch(firstHotEntry, this.entrySize-1)
+	}
+
+	if compareIndexEntry(this.GetIndexEntry(0), offset) > 0 {
+		return -1, 0
+	}
+
+	return binarySearch(0, firstHotEntry)
 }
 
 func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
+
+	// 发现currentOffset小于文件初始化的offset
+	// 说明这是第一次写本文件，则应该加上初始化offset
+	if this.currentOffset < this.startOffset {
+		this.currentOffset += this.startOffset
+	}
 
 	// 在index中写入offset
 	this.currentOffset += 1

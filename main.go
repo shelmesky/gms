@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	filename := "./0000000000000000000"
+	filename := "./0000011111"
 	logCapacity := 1024 * 1024 * 2
 	indexCapacity := 1024 * 1024 * 1
 
@@ -17,18 +17,22 @@ func main() {
 	var logIndexSegment disklog.LogIndexSegment
 	logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
 	err := logIndexSegment.LoadIndex()
-	if  err != nil && err != utils.EmptyIndexFile {
+	if err != nil && err != utils.EmptyIndexFile {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
-	data := "{'aaa': '111111'}"
-	data_len := len(data)
-	fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+	logIndexSegment.SearchIndex(11119)
 
-	data = "{'bbb': '222222'}"
-	data_len = len(data)
-	fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+	/*
+		data := "{'aaa': '111111'}"
+		data_len := len(data)
+		fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+
+		data = "{'bbb': '222222'}"
+		data_len = len(data)
+		fmt.Println(logIndexSegment.AppendBytes([]byte(data), data_len))
+	*/
 }
 
 func test_segment() {
