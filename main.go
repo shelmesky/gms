@@ -22,7 +22,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	logIndexSegment.SearchIndex(11119)
+	logPos := logIndexSegment.Search(11119)
+	fmt.Println(logIndexSegment.Log.ReadUInt32(logPos))
+	logLength, err := logIndexSegment.Log.ReadUInt32(logPos + 4)
+	fmt.Println(logLength, err)
+
+	logContent, err := logIndexSegment.Log.ReadBytes(logPos+8, int(logLength))
+	fmt.Println(string(logContent), err)
 
 	/*
 		data := "{'aaa': '111111'}"

@@ -387,8 +387,17 @@ failed:
 	return utils.LoadIndexError
 }
 
-func (this *LogIndexSegment) GetIndexEntry(offset int) int {
+// 根据offset返回Index索引条目的offset值
+func (this *LogIndexSegment) GetIndexEntryKey(offset int) int {
 	ret, err := this.Index.ReadUInt32(offset * IndexEntrySize)
+	if err != nil {
+		panic("read uint32 from index file failed")
+	}
+	return int(ret)
+}
+
+func (this *LogIndexSegment) GetIndexEntryValue(offset int) int {
+	ret, err := this.Index.ReadUInt32(offset*IndexEntrySize + 4)
 	if err != nil {
 		panic("read uint32 from index file failed")
 	}
@@ -406,7 +415,8 @@ func compareIndexEntry(found, offset int) int {
 	return 0
 }
 
-func (this *LogIndexSegment) SearchIndex(offset int) (int, int) {
+// 搜索target在index文件中处于第几个记录
+func (this *LogIndexSegment) SearchIndex(target int) (int, int) {
 	binarySearch := func(begin, end int) (int, int) {
 		var lo = begin
 		var hi = end
@@ -416,8 +426,8 @@ func (this *LogIndexSegment) SearchIndex(offset int) (int, int) {
 			}
 
 			mid := int(math.Ceil(float64(hi)/2.0 + float64(lo)/2.0))
-			found := this.GetIndexEntry(mid)
-			compareResult := compareIndexEntry(found, offset)
+			found := this.GetIndexEntryKey(mid)
+			compareResult := compareIndexEntry(found, target)
 			if compareResult > 0 {
 				hi = mid - 1
 			} else if compareResult < 0 {
@@ -447,15 +457,25 @@ func (this *LogIndexSegment) SearchIndex(offset int) (int, int) {
 	*/
 
 	firstHotEntry := int(math.Max(0, float64(this.entrySize-1-this.warmEntries)))
-	if compareIndexEntry(this.GetIndexEntry(firstHotEntry), offset) < 0 {
+	if compareIndexEntry(this.GetIndexEntryKey(firstHotEntry), target) < 0 {
 		return binarySearch(firstHotEntry, this.entrySize-1)
 	}
 
-	if compareIndexEntry(this.GetIndexEntry(0), offset) > 0 {
+	if compareIndexEntry(this.GetIndexEntryKey(0), target) > 0 {
 		return -1, 0
 	}
 
 	return binarySearch(0, firstHotEntry)
+}
+
+// 根据target搜索在index文件中记录的消息在log文件中的偏移
+func (this *LogIndexSegment) Search(target int) int {
+	indexOffsetLogPos, _ := this.SearchIndex(target)
+	if indexOffsetLogPos == -1 {
+		return -1
+	}
+
+	return this.GetIndexEntryValue(indexOffsetLogPos)
 }
 
 func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
