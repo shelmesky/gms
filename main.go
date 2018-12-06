@@ -3,32 +3,39 @@ package main
 import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
-	"github.com/shelmesky/gms/utils"
 	"os"
 	"time"
 )
 
 func main() {
-	filename := "./0000011111"
-	logCapacity := 1024 * 1024 * 2
-	indexCapacity := 1024 * 1024 * 1
-
-	fmt.Println(disklog.CreateLogIndexSegmentFile(filename, logCapacity, indexCapacity))
-	var logIndexSegment disklog.LogIndexSegment
-	logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
-	err := logIndexSegment.LoadIndex()
-	if err != nil && err != utils.EmptyIndexFile {
+	var diskLog disklog.DiskLog
+	err := diskLog.Init("./data")
+	if err != nil {
 		fmt.Println(err)
-		os.Exit(1)
 	}
 
-	logPos := logIndexSegment.Search(11119)
-	fmt.Println(logIndexSegment.Log.ReadUInt32(logPos))
-	logLength, err := logIndexSegment.Log.ReadUInt32(logPos + 4)
-	fmt.Println(logLength, err)
+	/*
+		filename := "./0000011111"
+		logCapacity := 1024 * 1024 * 2
+		indexCapacity := 1024 * 1024 * 1
 
-	logContent, err := logIndexSegment.Log.ReadBytes(logPos+8, int(logLength))
-	fmt.Println(string(logContent), err)
+		fmt.Println(disklog.CreateLogIndexSegmentFile(filename, logCapacity, indexCapacity))
+		var logIndexSegment disklog.LogIndexSegment
+		logIndexSegment.Open(filename, true, logCapacity, indexCapacity)
+		err := logIndexSegment.LoadIndex()
+		if err != nil && err != utils.EmptyIndexFile {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+
+		logPos := logIndexSegment.Search(11119)
+		fmt.Println(logIndexSegment.Log.ReadUInt32(logPos))
+		logLength, err := logIndexSegment.Log.ReadUInt32(logPos + 4)
+		fmt.Println(logLength, err)
+
+		logContent, err := logIndexSegment.Log.ReadBytes(logPos+8, int(logLength))
+		fmt.Println(string(logContent), err)
+	*/
 
 	/*
 		data := "{'aaa': '111111'}"

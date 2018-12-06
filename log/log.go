@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -282,7 +283,7 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 	}
 
 	// 根据文件名获取初始的offset
-	this.startOffset, err = FilenameToOffset(path.Clean(filename))
+	this.startOffset, err = FilenameToOffset(path.Base(path.Clean(filename)))
 	if err != nil {
 		return err
 	}
@@ -574,6 +575,51 @@ func (log *DiskLog) CreateSegment(filename string, logCapacity, indexCapacity in
 	return logIndexSeg
 }
 
+type baseFileInfo struct {
+	baseFileName  string
+	IndexFileSize int64
+	LogFileSize   int64
+}
+
+type sortedFileList []*baseFileInfo
+
+func (list sortedFileList) Get(i int) *baseFileInfo {
+	return list[i]
+}
+
+func (list sortedFileList) Set(value *baseFileInfo, i int) {
+	if i > list.Len() {
+		panic("")
+	}
+	list[i] = value
+}
+
+func (list sortedFileList) Len() int {
+	return len(list)
+}
+
+func (list sortedFileList) Swap(i, j int) {
+	list[i], list[j] = list[j], list[i]
+}
+
+func (list sortedFileList) Less(i, j int) bool {
+	fileNameOffset_I, err := FilenameToOffset(list[i].baseFileName)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	fileNameOffset_J, err := FilenameToOffset(list[j].baseFileName)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return fileNameOffset_I < fileNameOffset_J
+}
+
+func (log *DiskLog) getFullPath(filename string) string {
+	return path.Join(log.dirName, filename)
+}
+
 /*
 读取partition目录中的所有log和index文件
 按照文件名中包含的offset排序
@@ -582,15 +628,76 @@ func (log *DiskLog) CreateSegment(filename string, logCapacity, indexCapacity in
 以此增加读取记录时index的访问速度
 */
 func (log *DiskLog) Init(dirName string) error {
+	log.dirName = dirName
+
 	files, err := ioutil.ReadDir(dirName)
 	if err != nil {
 		return err
 	}
 
+	fileMap := make(map[string]*baseFileInfo, len(files))
+
+	// 循环读取文件并提取文件名和大小
 	for idx := range files {
-		file := files[idx]
-		file.Name()
+		fileName := files[idx].Name()
+		fileSize := files[idx].Size()
+
+		splitFile := strings.Split(path.Clean(path.Base(fileName)), ".")
+		if len(splitFile) != 2 {
+			return fmt.Errorf("split file failed:", fileName)
+		}
+
+		if _, ok := fileMap[splitFile[0]]; !ok {
+			fileMap[splitFile[0]] = new(baseFileInfo)
+		}
+
+		baseFile := fileMap[splitFile[0]]
+		baseFile.baseFileName = splitFile[0]
+
+		if strings.Contains(fileName, ".index") {
+			baseFile.IndexFileSize = fileSize
+		}
+
+		if strings.Contains(fileName, ".log") {
+			baseFile.LogFileSize = fileSize
+		}
 	}
+
+	var fileList sortedFileList
+	for _, v := range fileMap {
+		fileList = append(fileList, v)
+	}
+
+	sort.Sort(fileList)
+
+	// 打开只读的segment
+	for i := 0; i < fileList.Len()-1; i++ {
+		file := fileList.Get(i)
+		fileBaseName := file.baseFileName
+		indexFileSize := file.IndexFileSize
+		logFileSize := file.LogFileSize
+
+		var logIndexSegment LogIndexSegment
+		err := logIndexSegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
+		if err != nil {
+			return fmt.Errorf("open log and index as read only file failed: %s\n", err)
+		}
+
+		log.segments = append(log.segments, logIndexSegment)
+	}
+
+	// 打开读写的segment, 作为active segment
+	activeFile := fileList[fileList.Len()-1]
+	fileBaseName := activeFile.baseFileName
+	indexFileSize := activeFile.IndexFileSize
+	logFileSize := activeFile.LogFileSize
+	var activeSegment LogIndexSegment
+	err = activeSegment.Open(log.getFullPath(fileBaseName), true, int(logFileSize), int(indexFileSize))
+	if err != nil {
+		return fmt.Errorf("open log and index as writable file failed: %s\n", err)
+	}
+
+	log.activeSegment = activeSegment
 
 	return nil
 }
