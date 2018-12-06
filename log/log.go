@@ -559,6 +559,7 @@ type DiskLog struct {
 	dirName       string            // 目录名称
 	segments      []LogIndexSegment // 按照文件名排序的Segment
 	activeSegment LogIndexSegment   // 当前活动的Segment
+	lock          sync.RWMutex      // 保护数据
 }
 
 /*
@@ -620,13 +621,6 @@ func (log *DiskLog) getFullPath(filename string) string {
 	return path.Join(log.dirName, filename)
 }
 
-/*
-读取partition目录中的所有log和index文件
-按照文件名中包含的offset排序
-找到包含最大offset的segment当作ActiveSegment
-并在内存中维护一份index的数据拷贝map[int]int
-以此增加读取记录时index的访问速度
-*/
 func (log *DiskLog) Init(dirName string) error {
 	log.dirName = dirName
 
@@ -703,25 +697,18 @@ func (log *DiskLog) Init(dirName string) error {
 }
 
 /*
-在partition级别写入字节数据到存储
-1. 检查ActiveSegment是否正常
-2. 查找内存index中找到最大的offset
-3. 增加offset并将新的offset写入到index文件
-4. 找到上一条写入后的文件物理位置，作为此次新数据的起始位置
-5. 将此次数据在文件的起始位置写入index
-6. 在内存index数据结构中插入新写入的index信息
-
-index中的每一行都是一对offset和filePos:
-0,156
-10,300
-20,742
-
-index是稀疏索引，文件尺寸相对较小，但会增加查找时间
+写data到active segment.
+如当前active segment剩余空间不够写入足够的data, 则关闭当前active segment变为read only模式,
+再创建一个新的segment作为active segment.
 */
-func (log *DiskLog) WriteBytes(data []byte, length int) (int, error) {
+func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 	return 0, nil
 }
 
-func (log *DiskLog) SendBytesToSock(offset, length, sockFD int) error {
+/*
+读取startOffset到endOffset范围的数据到socketFD.
+如果readSize大于0, 则从startOffset开始读取指定大小的数据
+*/
+func (log *DiskLog) ReadDataToSock(startOffset, endOffset, readSize, sockFD int) error {
 	return nil
 }
