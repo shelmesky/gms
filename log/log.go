@@ -22,6 +22,7 @@ const (
 	IndexEntrySize            = 8
 	IndexFileSize             = 1024 * 1024 * 1
 	LogFileSize               = 1024 * 1024 * 2
+	EntriesPerFile            = 3
 )
 
 func CreateFile(filename string, capacity int) error {
@@ -521,12 +522,19 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
+	// log文件容量不足
 	if length > this.Log.Remain() {
 		return utils.LogFileRemainSizeSmall
 	}
 
+	// index文件容量不足
 	if this.Index.Remain() < 4 {
 		return utils.IndexFileRemainSizeSmall
+	}
+
+	// segment文件中消息数量超过预设
+	if (this.entrySize + 1) > EntriesPerFile {
+		return utils.LogFileRemainSizeSmall
 	}
 
 	// 发现currentOffset小于文件初始化的offset
@@ -783,7 +791,7 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 		}
 
 		// 保存当前active segment的最大offset
-		oldStartOffset := log.activeSegment.startOffset
+		oldCurrentOffset := log.activeSegment.currentOffset
 
 		// 重新打开之前关闭的segment作为只读模式
 		var readOnlySegment LogIndexSegment
@@ -802,7 +810,7 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 
 		// 创建新的log和index文件
 		var newActiveSegment LogIndexSegment
-		newFileBaseName := OffsetToFilename(oldStartOffset + 1) // 新的segment文件名是之前segment最大offset+1
+		newFileBaseName := OffsetToFilename(oldCurrentOffset + 1) // 新的segment文件名是之前segment最大offset+1
 		newIndexFileSize := IndexFileSize
 		newLogFileSize := LogFileSize
 

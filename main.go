@@ -14,13 +14,15 @@ func main() {
 		fmt.Println(err)
 	}
 
-	data := "{'aaa': '111111'}"
-	data_len := len(data)
-	fmt.Println(log.AppendBytes([]byte(data), data_len))
+	for i:=0; i< 15; i++ {
+		data := "{'aaa': '111111'}"
+		data_len := len(data)
+		fmt.Println(log.AppendBytes([]byte(data), data_len))
 
-	data = "{'bbb': '222222'}"
-	data_len = len(data)
-	fmt.Println(log.AppendBytes([]byte(data), data_len))
+		data = "{'bbb': '222222'}"
+		data_len = len(data)
+		fmt.Println(log.AppendBytes([]byte(data), data_len))
+	}
 
 	/*
 		filename := "./0000011111"
