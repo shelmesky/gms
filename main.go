@@ -8,11 +8,19 @@ import (
 )
 
 func main() {
-	var diskLog disklog.DiskLog
-	err := diskLog.Init("./data")
+	var log disklog.DiskLog
+	err := log.Init("./data")
 	if err != nil {
 		fmt.Println(err)
 	}
+
+	data := "{'aaa': '111111'}"
+	data_len := len(data)
+	fmt.Println(log.AppendBytes([]byte(data), data_len))
+
+	data = "{'bbb': '222222'}"
+	data_len = len(data)
+	fmt.Println(log.AppendBytes([]byte(data), data_len))
 
 	/*
 		filename := "./0000011111"

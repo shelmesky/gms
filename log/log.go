@@ -36,7 +36,10 @@ func CreateFile(filename string, capacity int) error {
 			return err
 		}
 
-		file.Close()
+		err = file.Close()
+		if err != nil {
+			return err
+		}
 
 		return nil
 	}
@@ -675,7 +678,14 @@ func (log *DiskLog) Init(dirName string) error {
 	// 如果当前目录没有segment, 则初始化一个新的
 	// 接着重新读取目录
 	if len(files) == 0 {
-		// CreateLogIndexSegmentFile()
+		// 创建新的log和index文件
+		newFileBaseName := OffsetToFilename(0) // 新的segment文件名是之前segment最大offset+1
+		newIndexFileSize := IndexFileSize
+		newLogFileSize := LogFileSize
+		err := CreateLogIndexSegmentFile(log.getFullPath(newFileBaseName), newLogFileSize, newIndexFileSize)
+		if err != nil {
+			return err
+		}
 
 		files, err = ioutil.ReadDir(dirName)
 		if err != nil {
@@ -780,6 +790,7 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 		fileBaseName := log.activeFile.baseFileName
 		indexFileSize := log.activeFile.IndexFileSize
 		logFileSize := log.activeFile.LogFileSize
+
 		err = readOnlySegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
 		if err != nil {
 			return 0, fmt.Errorf("reopen active segment [%s] as read only failed: %s\n",
@@ -794,6 +805,12 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 		newFileBaseName := OffsetToFilename(oldStartOffset + 1) // 新的segment文件名是之前segment最大offset+1
 		newIndexFileSize := IndexFileSize
 		newLogFileSize := LogFileSize
+
+		err = CreateLogIndexSegmentFile(log.getFullPath(newFileBaseName), newLogFileSize, newIndexFileSize)
+		if err != nil {
+			return 0, err
+		}
+
 		err = newActiveSegment.Open(log.getFullPath(newFileBaseName), true, newLogFileSize, newIndexFileSize)
 		if err != nil {
 			return 0, fmt.Errorf("create new active segment [%s] failed: %s\n",
