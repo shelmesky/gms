@@ -20,6 +20,8 @@ import (
 const (
 	MessageOffsetAndSizeField = 8
 	IndexEntrySize            = 8
+	IndexFileSize             = 1024 * 1024 * 1
+	LogFileSize               = 1024 * 1024 * 2
 )
 
 func CreateFile(filename string, capacity int) error {
@@ -200,6 +202,10 @@ func (this *FileSegment) Used() int {
 	return this.dataWritten
 }
 
+func (this *FileSegment) Remain() int {
+	return this.size - this.dataWritten
+}
+
 // 内存中Index的一条记录
 type IndexRecord struct {
 	offset  int
@@ -290,6 +296,35 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 
 	// 设置warm section的范围
 	this.warmEntries = 8192
+
+	return nil
+}
+
+// 关闭log和index文件
+func (this *LogIndexSegment) Close() error {
+	this.lock.RLock()
+	defer this.lock.RUnlock()
+
+	// 关闭之前刷新page cache数据到磁盘
+	err := this.Index.Force()
+	if err != nil {
+		return err
+	}
+
+	err = this.Log.Force()
+	if err != nil {
+		return err
+	}
+
+	err = this.Index.Close()
+	if err != nil {
+		return err
+	}
+
+	err = this.Log.Close()
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -483,6 +518,14 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
+	if length > this.Log.Remain() {
+		return utils.LogFileRemainSizeSmall
+	}
+
+	if this.Index.Remain() < 4 {
+		return utils.IndexFileRemainSizeSmall
+	}
+
 	// 发现currentOffset小于文件初始化的offset
 	// 说明这是第一次写本文件，则应该加上初始化offset
 	if this.currentOffset < this.startOffset {
@@ -559,7 +602,7 @@ type DiskLog struct {
 	dirName       string            // 目录名称
 	segments      []LogIndexSegment // 按照文件名排序的Segment
 	activeSegment LogIndexSegment   // 当前活动的Segment
-	lock          sync.RWMutex      // 保护数据
+	activeFile    *baseFileInfo     // 当前活动的文件
 }
 
 /*
@@ -629,6 +672,17 @@ func (log *DiskLog) Init(dirName string) error {
 		return err
 	}
 
+	// 如果当前目录没有segment, 则初始化一个新的
+	// 接着重新读取目录
+	if len(files) == 0 {
+		// CreateLogIndexSegmentFile()
+
+		files, err = ioutil.ReadDir(dirName)
+		if err != nil {
+			return err
+		}
+	}
+
 	fileMap := make(map[string]*baseFileInfo, len(files))
 
 	// 循环读取文件并提取文件名和大小
@@ -692,6 +746,7 @@ func (log *DiskLog) Init(dirName string) error {
 	}
 
 	log.activeSegment = activeSegment
+	log.activeFile = activeFile
 
 	return nil
 }
@@ -702,7 +757,59 @@ func (log *DiskLog) Init(dirName string) error {
 再创建一个新的segment作为active segment.
 */
 func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
-	return 0, nil
+	err := log.activeSegment.AppendBytes(data, length)
+	if err == nil {
+		return length, nil
+	}
+
+	// 如果返回log文件或index文件荣容量不够的错误
+	// 则关闭当前active segment, 再创建一个新的segment作为active segment
+	if err == utils.LogFileRemainSizeSmall || err == utils.IndexFileRemainSizeSmall {
+
+		// 关闭当前活动的segment
+		err := log.activeSegment.Close()
+		if err != nil {
+			return 0, err
+		}
+
+		// 保存当前active segment的最大offset
+		oldStartOffset := log.activeSegment.startOffset
+
+		// 重新打开之前关闭的segment作为只读模式
+		var readOnlySegment LogIndexSegment
+		fileBaseName := log.activeFile.baseFileName
+		indexFileSize := log.activeFile.IndexFileSize
+		logFileSize := log.activeFile.LogFileSize
+		err = readOnlySegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
+		if err != nil {
+			return 0, fmt.Errorf("reopen active segment [%s] as read only failed: %s\n",
+				fileBaseName, err.Error())
+		}
+
+		// 将只读模式的segment加入到segment列表
+		log.segments = append(log.segments, readOnlySegment)
+
+		// 创建新的log和index文件
+		var newActiveSegment LogIndexSegment
+		newFileBaseName := OffsetToFilename(oldStartOffset + 1) // 新的segment文件名是之前segment最大offset+1
+		newIndexFileSize := IndexFileSize
+		newLogFileSize := LogFileSize
+		err = newActiveSegment.Open(log.getFullPath(newFileBaseName), true, newLogFileSize, newIndexFileSize)
+		if err != nil {
+			return 0, fmt.Errorf("create new active segment [%s] failed: %s\n",
+				newFileBaseName, err.Error())
+		}
+
+		// 将新的active segment绑定到当前对象
+		log.activeSegment = newActiveSegment
+		newActiveFile := &baseFileInfo{newFileBaseName,
+			int64(newIndexFileSize), int64(newLogFileSize)}
+		log.activeFile = newActiveFile
+
+		return 0, utils.NewActiveSegmentCreated
+	}
+
+	return 0, err
 }
 
 /*
