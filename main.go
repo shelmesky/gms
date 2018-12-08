@@ -3,7 +3,10 @@ package main
 import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
+	"github.com/shelmesky/gms/utils"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,14 +17,22 @@ func main() {
 		fmt.Println(err)
 	}
 
-	for i:=0; i< 15; i++ {
-		data := "{'aaa': '111111'}"
+	for i := 0; i < 20; i += 1 {
+		str := strings.Repeat(strconv.Itoa(i), 6)
+		data := fmt.Sprintf("{'%s': '%s'}", str, str)
 		data_len := len(data)
-		fmt.Println(log.AppendBytes([]byte(data), data_len))
-
-		data = "{'bbb': '222222'}"
-		data_len = len(data)
-		fmt.Println(log.AppendBytes([]byte(data), data_len))
+		//fmt.Println(data, data_len)
+		for {
+			written, err := log.AppendBytes([]byte(data), data_len)
+			if err != utils.NewActiveSegmentCreated {
+				if err == nil {
+					fmt.Printf("[%d] data written: %d", i, written)
+				} else {
+					fmt.Println("AppendBytes failed:", err)
+				}
+				break
+			}
+		}
 	}
 
 	/*

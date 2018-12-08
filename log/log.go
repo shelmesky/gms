@@ -537,14 +537,13 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 		return utils.LogFileRemainSizeSmall
 	}
 
-	// 发现currentOffset小于文件初始化的offset
+	// 发现currentOffset(值为0)小于文件初始化的offset
 	// 说明这是第一次写本文件，则应该加上初始化offset
 	if this.currentOffset < this.startOffset {
 		this.currentOffset += this.startOffset
 	}
 
 	// 在index中写入offset
-	this.currentOffset += 1
 	written, err := this.Index.AppendUInt32(uint32(this.currentOffset))
 	if err != nil {
 		return err
@@ -604,6 +603,9 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 
 	// 增加index的记录数量
 	this.entrySize += 1
+
+	// 增加当前最大offset
+	this.currentOffset += 1
 
 	return nil
 }
@@ -687,7 +689,7 @@ func (log *DiskLog) Init(dirName string) error {
 	// 接着重新读取目录
 	if len(files) == 0 {
 		// 创建新的log和index文件
-		newFileBaseName := OffsetToFilename(0) // 新的segment文件名是之前segment最大offset+1
+		newFileBaseName := OffsetToFilename(0)
 		newIndexFileSize := IndexFileSize
 		newLogFileSize := LogFileSize
 		err := CreateLogIndexSegmentFile(log.getFullPath(newFileBaseName), newLogFileSize, newIndexFileSize)
@@ -810,7 +812,7 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 
 		// 创建新的log和index文件
 		var newActiveSegment LogIndexSegment
-		newFileBaseName := OffsetToFilename(oldCurrentOffset + 1) // 新的segment文件名是之前segment最大offset+1
+		newFileBaseName := OffsetToFilename(oldCurrentOffset) // 新的segment文件名是之前segment最大offset+1
 		newIndexFileSize := IndexFileSize
 		newLogFileSize := LogFileSize
 
