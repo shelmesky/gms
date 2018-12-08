@@ -22,7 +22,7 @@ const (
 	IndexEntrySize            = 8
 	IndexFileSize             = 1024 * 1024 * 1
 	LogFileSize               = 1024 * 1024 * 2
-	EntriesPerFile            = 3
+	EntriesPerFile            = 4
 	FileNameLength            = 19
 )
 
