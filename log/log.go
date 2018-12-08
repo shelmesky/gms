@@ -23,6 +23,7 @@ const (
 	IndexFileSize             = 1024 * 1024 * 1
 	LogFileSize               = 1024 * 1024 * 2
 	EntriesPerFile            = 3
+	FileNameLength            = 19
 )
 
 func CreateFile(filename string, capacity int) error {
@@ -223,10 +224,10 @@ func FilenameToOffset(filename string) (int, error) {
 func OffsetToFilename(offset int) string {
 	filename := strconv.Itoa(offset)
 	filenameLength := len(filename)
-	if filenameLength > 10 {
-		filenameLength = 10
+	if filenameLength > FileNameLength {
+		filenameLength = FileNameLength
 	}
-	filename = strings.Repeat("0", 10-filenameLength) + filename
+	filename = strings.Repeat("0", FileNameLength-filenameLength) + filename
 	return filename
 }
 
@@ -618,20 +619,6 @@ type DiskLog struct {
 	activeFile    *baseFileInfo     // 当前活动的文件
 }
 
-/*
-当前ActiveSegment文件大小不足时
-创建新的Segment
-1. 查找ActiveSegment的最大offset
-2. 以offset问文件名创建Segment
-3. 关闭ActiveSegment
-4. 把新的Segment作为ActiveSegment
-*/
-func (log *DiskLog) CreateSegment(filename string, logCapacity, indexCapacity int) LogIndexSegment {
-	var logIndexSeg LogIndexSegment
-
-	return logIndexSeg
-}
-
 type baseFileInfo struct {
 	baseFileName  string
 	IndexFileSize int64
@@ -771,72 +758,83 @@ func (log *DiskLog) Init(dirName string) error {
 	return nil
 }
 
+// 关闭当前active segment并创建新的
+func (log *DiskLog) RegenerateActiveSegment() error {
+	// 关闭当前活动的segment
+	err := log.activeSegment.Close()
+	if err != nil {
+		return err
+	}
+
+	// 保存当前active segment的最大offset
+	oldCurrentOffset := log.activeSegment.currentOffset
+
+	// 重新打开之前关闭的segment作为只读模式
+	var readOnlySegment LogIndexSegment
+	fileBaseName := log.activeFile.baseFileName
+	indexFileSize := log.activeFile.IndexFileSize
+	logFileSize := log.activeFile.LogFileSize
+
+	err = readOnlySegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
+	if err != nil {
+		return fmt.Errorf("reopen active segment [%s] as read only failed: %s\n",
+			fileBaseName, err.Error())
+	}
+
+	// 将只读模式的segment加入到segment列表
+	log.segments = append(log.segments, readOnlySegment)
+
+	// 创建新的log和index文件
+	var newActiveSegment LogIndexSegment
+	newFileBaseName := OffsetToFilename(oldCurrentOffset) // 新的segment文件名是之前segment最大offset+1
+	newIndexFileSize := IndexFileSize
+	newLogFileSize := LogFileSize
+
+	err = CreateLogIndexSegmentFile(log.getFullPath(newFileBaseName), newLogFileSize, newIndexFileSize)
+	if err != nil {
+		return err
+	}
+
+	err = newActiveSegment.Open(log.getFullPath(newFileBaseName), true, newLogFileSize, newIndexFileSize)
+	if err != nil {
+		return fmt.Errorf("create new active segment [%s] failed: %s\n",
+			newFileBaseName, err.Error())
+	}
+
+	// 将新的active segment绑定到当前对象
+	log.activeSegment = newActiveSegment
+	newActiveFile := &baseFileInfo{newFileBaseName,
+		int64(newIndexFileSize), int64(newLogFileSize)}
+	log.activeFile = newActiveFile
+
+	return nil
+}
+
 /*
 写data到active segment.
 如当前active segment剩余空间不够写入足够的data, 则关闭当前active segment变为read only模式,
 再创建一个新的segment作为active segment.
 */
 func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
-	err := log.activeSegment.AppendBytes(data, length)
-	if err == nil {
-		return length, nil
-	}
+	for {
+		err := log.activeSegment.AppendBytes(data, length)
+		if err == nil {
+			return length, nil
+		}
 
-	// 如果返回log文件或index文件荣容量不够的错误
-	// 则关闭当前active segment, 再创建一个新的segment作为active segment
-	if err == utils.LogFileRemainSizeSmall || err == utils.IndexFileRemainSizeSmall {
+		// 如果返回log文件或index文件荣容量不够的错误
+		// 则关闭当前active segment, 再创建一个新的segment作为active segment
+		if err == utils.LogFileRemainSizeSmall || err == utils.IndexFileRemainSizeSmall {
+			err = log.RegenerateActiveSegment()
+			if err != nil {
+				return 0, err
+			}
+		}
 
-		// 关闭当前活动的segment
-		err := log.activeSegment.Close()
 		if err != nil {
 			return 0, err
 		}
-
-		// 保存当前active segment的最大offset
-		oldCurrentOffset := log.activeSegment.currentOffset
-
-		// 重新打开之前关闭的segment作为只读模式
-		var readOnlySegment LogIndexSegment
-		fileBaseName := log.activeFile.baseFileName
-		indexFileSize := log.activeFile.IndexFileSize
-		logFileSize := log.activeFile.LogFileSize
-
-		err = readOnlySegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
-		if err != nil {
-			return 0, fmt.Errorf("reopen active segment [%s] as read only failed: %s\n",
-				fileBaseName, err.Error())
-		}
-
-		// 将只读模式的segment加入到segment列表
-		log.segments = append(log.segments, readOnlySegment)
-
-		// 创建新的log和index文件
-		var newActiveSegment LogIndexSegment
-		newFileBaseName := OffsetToFilename(oldCurrentOffset) // 新的segment文件名是之前segment最大offset+1
-		newIndexFileSize := IndexFileSize
-		newLogFileSize := LogFileSize
-
-		err = CreateLogIndexSegmentFile(log.getFullPath(newFileBaseName), newLogFileSize, newIndexFileSize)
-		if err != nil {
-			return 0, err
-		}
-
-		err = newActiveSegment.Open(log.getFullPath(newFileBaseName), true, newLogFileSize, newIndexFileSize)
-		if err != nil {
-			return 0, fmt.Errorf("create new active segment [%s] failed: %s\n",
-				newFileBaseName, err.Error())
-		}
-
-		// 将新的active segment绑定到当前对象
-		log.activeSegment = newActiveSegment
-		newActiveFile := &baseFileInfo{newFileBaseName,
-			int64(newIndexFileSize), int64(newLogFileSize)}
-		log.activeFile = newActiveFile
-
-		return 0, utils.NewActiveSegmentCreated
 	}
-
-	return 0, err
 }
 
 /*

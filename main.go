@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
-	"github.com/shelmesky/gms/utils"
 	"os"
 	"strconv"
 	"strings"
@@ -22,17 +21,14 @@ func main() {
 		data := fmt.Sprintf("{'%s': '%s'}", str, str)
 		data_len := len(data)
 		//fmt.Println(data, data_len)
-		for {
-			written, err := log.AppendBytes([]byte(data), data_len)
-			if err != utils.NewActiveSegmentCreated {
-				if err == nil {
-					fmt.Printf("[%d] data written: %d", i, written)
-				} else {
-					fmt.Println("AppendBytes failed:", err)
-				}
-				break
-			}
+
+		written, err := log.AppendBytes([]byte(data), data_len)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			fmt.Printf("[%d] data written: %d\n", i, written)
 		}
+
 	}
 
 	/*
