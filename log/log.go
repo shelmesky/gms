@@ -877,15 +877,15 @@ func (log *DiskLog) compareSegmentEntry(position int, startOffset int) int {
 }
 
 // 根据target在当前目录下搜索
-func (log *DiskLog) Search(startOffset int) (*LogIndexSegment, int, error) {
+func (log *DiskLog) Search(target int) (*LogIndexSegment, int, error) {
 	// 首选判断是否在active segment范围内
 	// 如果是就直接在active segment中查找
-	if startOffset > log.activeSegment.startOffset {
-		if startOffset > log.activeSegment.currentOffset {
+	if target > log.activeSegment.startOffset {
+		if target > log.activeSegment.currentOffset {
 			return nil, -1, utils.TargetGreatThanCommitted
 		}
 
-		result, _ := log.activeSegment.SearchIndex(startOffset)
+		result, _ := log.activeSegment.SearchIndex(target)
 		if result < 1 {
 			return nil, -1, utils.TargetNotFound
 		}
@@ -902,7 +902,7 @@ func (log *DiskLog) Search(startOffset int) (*LogIndexSegment, int, error) {
 			}
 
 			mid := int(math.Ceil(float64(hi)/2.0 + float64(lo)/2.0))
-			compareResult := log.compareSegmentEntry(mid, startOffset)
+			compareResult := log.compareSegmentEntry(mid, target)
 			if compareResult > 0 {
 				hi = mid - 1
 			} else if compareResult < 0 {
@@ -928,7 +928,7 @@ func (log *DiskLog) Search(startOffset int) (*LogIndexSegment, int, error) {
 		return nil, -1, err
 	}
 
-	result := segment.Search(startOffset)
+	result := segment.Search(target)
 	if result < 1 {
 		return nil, -1, utils.TargetNotFound
 	} else {
