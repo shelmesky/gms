@@ -923,13 +923,16 @@ func (log *DiskLog) Search(startOffset int) (*LogIndexSegment, int, error) {
 	}
 
 	pos, _ := binarySearch(0, len(log.segments)-1)
-	segment := log.segments[pos]
+	segment, err := log.GetSegment(pos)
+	if err != nil {
+		return nil, -1, err
+	}
 
 	result := segment.Search(startOffset)
 	if result < 1 {
 		return nil, -1, utils.TargetNotFound
 	} else {
-		return &segment, result, nil
+		return segment, result, nil
 	}
 }
 
