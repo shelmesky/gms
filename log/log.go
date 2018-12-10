@@ -351,7 +351,6 @@ size   uint32
 body   N bytes
 */
 func (this *LogIndexSegment) LoadIndex() error {
-	var indexList []IndexRecord
 	var lastOffset int
 	var lastMessagePos int
 	var lastMessageSize uint32
@@ -361,29 +360,38 @@ func (this *LogIndexSegment) LoadIndex() error {
 	pos := 0
 
 	for {
-		var indexRecord IndexRecord
-
 		// 读取4字节的offset
 		offset, err := this.Index.ReadUInt32(pos)
 		if err != nil {
-			goto failed
+			return err
 		}
 		pos += 4
 
 		// 读取4字节的文件位置
 		messagePos, err := this.Index.ReadUInt32(pos)
 		if err != nil {
-			goto failed
+			return err
 		}
 		pos += 4
 
-		// 如果读取到的offset和messagePos都为0
-		// 说明读到了索引文件的末尾
-		if offset == 0 && messagePos == 0 {
-			// 设置index文件的最后写入位置
-			// 当最后检测到两个字段都为0,要回退8个字节
-			this.Index.dataWritten = pos - 8
-			break
+		// 确保已经读取不止1条记录, 排除文件开始都为0的情况
+		if this.entrySize > 0 {
+			// 如果读取到的offset和messagePos都为0
+			// 说明读到了索引文件的末尾
+			if offset == 0 && messagePos == 0 {
+				// 设置index文件的最后写入位置
+				// 当最后检测到两个字段都为0
+
+				// 如已经读取了1条记录, 说明加上本次是连续两次记录为0, 要回退16个字节
+				// 如已经读取了大于1条即最少2条, 说明前一次读取是正常的, 则只要回退8字节
+				if this.entrySize == 1 {
+					this.Index.dataWritten = pos - 16
+					this.entrySize -= 1
+				} else if this.entrySize > 1 {
+					this.Index.dataWritten = pos - 8
+				}
+				break
+			}
 		}
 
 		// 增加index的记录数量
@@ -391,21 +399,16 @@ func (this *LogIndexSegment) LoadIndex() error {
 
 		lastOffset = int(offset)
 		lastMessagePos = int(messagePos)
-
-		// 将Index的记录插入IndexList，用于根据offset读取时的查找
-		indexRecord.offset = int(offset)
-		indexRecord.filePos = int(messagePos)
-		indexList = append(indexList, indexRecord)
 	}
 
-	if len(indexList) > 0 {
+	if this.entrySize > 0 {
 		// 设置当前Index文件最后的offset和文件位置
 		this.currentOffset = lastOffset
 
 		// 读取最后一条消息的大小到lastMessageSize
 		lastMessageSize, err = this.Log.ReadUInt32(lastMessagePos + 4)
 		if err != nil {
-			goto failed
+			return err
 		}
 
 		// 在.log文件中最后一条消息的文件位置等于：
@@ -416,16 +419,8 @@ func (this *LogIndexSegment) LoadIndex() error {
 		this.Log.dataWritten = logFileEndPos
 		// 设置.index记录中将来要记录的消息在.log文件中的开始位置
 		this.currentFilePos = logFileEndPos
-
-		// 设置索引记录的列表
-		this.indexList = indexList
-
-		return nil
-	} else {
-		return utils.EmptyIndexFile
 	}
-failed:
-	return utils.LoadIndexError
+	return nil
 }
 
 // 根据offset返回Index索引条目的offset值
@@ -738,6 +733,11 @@ func (log *DiskLog) Init(dirName string) error {
 			return fmt.Errorf("open log and index as read only file failed: %s\n", err)
 		}
 
+		err = logIndexSegment.LoadIndex()
+		if err != nil {
+			return err
+		}
+
 		log.segments = append(log.segments, logIndexSegment)
 	}
 
@@ -750,6 +750,11 @@ func (log *DiskLog) Init(dirName string) error {
 	err = activeSegment.Open(log.getFullPath(fileBaseName), true, int(logFileSize), int(indexFileSize))
 	if err != nil {
 		return fmt.Errorf("open log and index as writable file failed: %s\n", err)
+	}
+
+	err = activeSegment.LoadIndex()
+	if err != nil {
+		return err
 	}
 
 	log.activeSegment = activeSegment
@@ -766,8 +771,13 @@ func (log *DiskLog) RegenerateActiveSegment() error {
 		return err
 	}
 
-	// 保存当前active segment的最大offset
-	oldCurrentOffset := log.activeSegment.currentOffset
+	oldActiveFileToOffset, err := FilenameToOffset(log.activeFile.baseFileName)
+	if err != nil {
+		return err
+	}
+	// 新的segment的名字等于旧的segment的文件名数字加保存的记录数
+	oldActiveFileToOffset += log.activeSegment.entrySize
+	newSegmentOffset := oldActiveFileToOffset
 
 	// 重新打开之前关闭的segment作为只读模式
 	var readOnlySegment LogIndexSegment
@@ -786,7 +796,7 @@ func (log *DiskLog) RegenerateActiveSegment() error {
 
 	// 创建新的log和index文件
 	var newActiveSegment LogIndexSegment
-	newFileBaseName := OffsetToFilename(oldCurrentOffset) // 新的segment文件名是之前segment最大offset+1
+	newFileBaseName := OffsetToFilename(newSegmentOffset)
 	newIndexFileSize := IndexFileSize
 	newLogFileSize := LogFileSize
 
