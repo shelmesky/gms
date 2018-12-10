@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
+	"github.com/shelmesky/gms/utils"
 	"os"
 	"time"
 )
@@ -31,22 +32,87 @@ func main() {
 		}
 	*/
 
-	segment, pos, err := log.Search(19)
-	if err != nil {
+	batchRead := func(target int, length int) ([]byte, error) {
+		var buffer []byte
+
+		segmentPos, segment, logFilePos, err := log.Search(target)
+		if err != nil {
+			return buffer, err
+		}
+
+		if logFilePos < 0 {
+			return buffer, fmt.Errorf("cant find offset\n")
+		}
+
+		fmt.Println(logFilePos, err)
+
+		messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
+		if err != nil {
+			return buffer, err
+		}
+
+		messageContent, err := segment.Log.ReadBytes(logFilePos+8, int(messageLength))
+		if err != nil {
+			return buffer, nil
+		}
+
+		buffer = append(buffer, messageContent...)
+
+		logFilePos += 8
+		logFilePos += int(messageLength)
+
+		// 减去上面读取的一条记录
+		length -= 1
+
+		readCounter := 0
+		if segmentPos > 0 && segmentPos <= log.SegmentLength()-1 {
+			for {
+				if readCounter >= length {
+					break
+				}
+
+				// 消息的长度
+				messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
+				if err != nil {
+					return buffer, err
+				}
+
+				// 说明读到了log文件末尾
+				// 切换下一个segment并从文件开始处读
+				if messageLength == 0 {
+					segmentPos += 1
+					segment, err = log.GetSegment(segmentPos)
+					// 如果返回错误,说明已经读取完所有的segment
+					if err != nil {
+						return buffer, err
+					}
+					logFilePos = 0
+					continue
+				}
+
+				messageContent, err := segment.Log.ReadBytes(logFilePos+8, int(messageLength))
+				if err != nil {
+					return buffer, nil
+				}
+
+				buffer = append(buffer, messageContent...)
+
+				logFilePos += 8
+				logFilePos += int(messageLength)
+				readCounter += 1
+			}
+		}
+
+		return buffer, nil
+	}
+
+	// TODO: target为0时, 二分搜索的lo >= hi都为0, 导致退出的BUG
+	message, err := batchRead(36, 6)
+	if err != nil && err != utils.IndexIsIllegal {
 		fmt.Println(err)
+	} else {
+		fmt.Println(string(message))
 	}
-
-	if pos < 1 {
-		fmt.Println("cant find offset")
-	}
-
-	fmt.Println(pos, err)
-
-	messageLength, err := segment.Log.ReadUInt32(pos + 4)
-	fmt.Println(messageLength, err)
-
-	messageContent, err := segment.Log.ReadBytes(pos+8, int(messageLength))
-	fmt.Println(string(messageContent), err)
 
 	/*
 		filename := "./0000011111"

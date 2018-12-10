@@ -660,11 +660,15 @@ func (log *DiskLog) getFullPath(filename string) string {
 }
 
 func (log *DiskLog) GetSegment(pos int) (*LogIndexSegment, error) {
-	if pos < 1 || pos > len(log.segments)-1 {
+	if pos < 0 || pos > len(log.segments)-1 {
 		return nil, utils.IndexIsIllegal
 	}
 
 	return &log.segments[pos], nil
+}
+
+func (log *DiskLog) SegmentLength() int {
+	return len(log.segments)
 }
 
 func (log *DiskLog) Init(dirName string) error {
@@ -877,19 +881,24 @@ func (log *DiskLog) compareSegmentEntry(position int, startOffset int) int {
 }
 
 // 根据target在当前目录下搜索
-func (log *DiskLog) Search(target int) (*LogIndexSegment, int, error) {
+// 返回参数:
+// 1. 目标segment在segment列表中的index
+// 2. 目标segment指针
+// 3. 目标segment中log文件的开始读取位置
+// 4. 错误信息
+func (log *DiskLog) Search(target int) (int, *LogIndexSegment, int, error) {
 	// 首选判断是否在active segment范围内
 	// 如果是就直接在active segment中查找
-	if target > log.activeSegment.startOffset {
+	if target >= log.activeSegment.startOffset {
 		if target > log.activeSegment.currentOffset {
-			return nil, -1, utils.TargetGreatThanCommitted
+			return -1, nil, -1, utils.TargetGreatThanCommitted
 		}
 
 		result, _ := log.activeSegment.SearchIndex(target)
-		if result < 1 {
-			return nil, -1, utils.TargetNotFound
+		if result < 0 {
+			return -1, nil, -1, utils.TargetNotFound
 		}
-		return &log.activeSegment, result, nil
+		return len(log.segments)-1, &log.activeSegment, result, nil
 	}
 
 	// 在read only的segments中查找
@@ -904,9 +913,9 @@ func (log *DiskLog) Search(target int) (*LogIndexSegment, int, error) {
 			mid := int(math.Ceil(float64(hi)/2.0 + float64(lo)/2.0))
 			compareResult := log.compareSegmentEntry(mid, target)
 			if compareResult > 0 {
-				hi = mid - 1
-			} else if compareResult < 0 {
 				lo = mid
+			} else if compareResult < 0 {
+				hi = mid - 1
 			} else {
 				return mid, mid
 			}
@@ -925,14 +934,14 @@ func (log *DiskLog) Search(target int) (*LogIndexSegment, int, error) {
 	pos, _ := binarySearch(0, len(log.segments)-1)
 	segment, err := log.GetSegment(pos)
 	if err != nil {
-		return nil, -1, err
+		return -1, nil, -1, err
 	}
 
-	result := segment.Search(target)
-	if result < 1 {
-		return nil, -1, utils.TargetNotFound
+	logFilePos := segment.Search(target)
+	if logFilePos < 0 {
+		return -1, nil, -1, utils.TargetNotFound
 	} else {
-		return segment, result, nil
+		return pos, segment, logFilePos, nil
 	}
 }
 
@@ -940,6 +949,6 @@ func (log *DiskLog) Search(target int) (*LogIndexSegment, int, error) {
 读取startOffset到endOffset范围的数据到socketFD.
 如果readSize大于0, 则从startOffset开始读取指定大小的数据
 */
-func ReadDataToSock(startOffset, endOffset, readSize, sockFD int) error {
+func ReadDataToSock(startOffset, length, readSize, sockFD int) error {
 	return nil
 }
