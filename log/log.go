@@ -659,6 +659,14 @@ func (log *DiskLog) getFullPath(filename string) string {
 	return path.Join(log.dirName, filename)
 }
 
+func (log *DiskLog) GetSegment(pos int) (*LogIndexSegment, error) {
+	if pos < 1 || pos > len(log.segments)-1 {
+		return nil, utils.IndexIsIllegal
+	}
+
+	return &log.segments[pos], nil
+}
+
 func (log *DiskLog) Init(dirName string) error {
 	log.dirName = dirName
 
@@ -826,6 +834,10 @@ func (log *DiskLog) RegenerateActiveSegment() error {
 再创建一个新的segment作为active segment.
 */
 func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
+	if len(data) == 0 || length == 0 {
+		return 0, utils.ZeroLengthError
+	}
+
 	for {
 		err := log.activeSegment.AppendBytes(data, length)
 		if err == nil {
@@ -847,10 +859,84 @@ func (log *DiskLog) AppendBytes(data []byte, length int) (int, error) {
 	}
 }
 
+func (log *DiskLog) compareSegmentEntry(position int, startOffset int) int {
+	segment := log.segments[position]
+	if startOffset >= segment.startOffset && startOffset <= segment.currentOffset {
+		return 0
+	}
+
+	if startOffset > segment.startOffset {
+		return 1
+	}
+
+	if startOffset < segment.startOffset {
+		return -1
+	}
+
+	return -1
+}
+
+// 根据target在当前目录下搜索
+func (log *DiskLog) Search(startOffset int) (*LogIndexSegment, int, error) {
+	// 首选判断是否在active segment范围内
+	// 如果是就直接在active segment中查找
+	if startOffset > log.activeSegment.startOffset {
+		if startOffset > log.activeSegment.currentOffset {
+			return nil, -1, utils.TargetGreatThanCommitted
+		}
+
+		result, _ := log.activeSegment.SearchIndex(startOffset)
+		if result < 1 {
+			return nil, -1, utils.TargetNotFound
+		}
+		return &log.activeSegment, result, nil
+	}
+
+	// 在read only的segments中查找
+	binarySearch := func(begin, end int) (int, int) {
+		var lo = begin
+		var hi = end
+		for {
+			if lo >= hi {
+				break
+			}
+
+			mid := int(math.Ceil(float64(hi)/2.0 + float64(lo)/2.0))
+			compareResult := log.compareSegmentEntry(mid, startOffset)
+			if compareResult > 0 {
+				hi = mid - 1
+			} else if compareResult < 0 {
+				lo = mid
+			} else {
+				return mid, mid
+			}
+		}
+
+		var upperBound int
+		if lo == len(log.segments)-1 {
+			upperBound = -1
+		} else {
+			upperBound = lo + 1
+		}
+
+		return lo, upperBound
+	}
+
+	pos, _ := binarySearch(0, len(log.segments)-1)
+	segment := log.segments[pos]
+
+	result := segment.Search(startOffset)
+	if result < 1 {
+		return nil, -1, utils.TargetNotFound
+	} else {
+		return &segment, result, nil
+	}
+}
+
 /*
 读取startOffset到endOffset范围的数据到socketFD.
 如果readSize大于0, 则从startOffset开始读取指定大小的数据
 */
-func (log *DiskLog) ReadDataToSock(startOffset, endOffset, readSize, sockFD int) error {
+func ReadDataToSock(startOffset, endOffset, readSize, sockFD int) error {
 	return nil
 }

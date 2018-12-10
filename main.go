@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"github.com/shelmesky/gms/log"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 )
 
@@ -16,20 +14,39 @@ func main() {
 		fmt.Println(err)
 	}
 
-	for i := 0; i < 20; i += 1 {
-		str := strings.Repeat(strconv.Itoa(i), 6)
-		data := fmt.Sprintf("{'%s': '%s'}", str, str)
-		data_len := len(data)
-		//fmt.Println(data, data_len)
+	/*
+		for i := 0; i < 20; i += 1 {
+			str := strings.Repeat(strconv.Itoa(i), 6)
+			data := fmt.Sprintf("{'%s': '%s'}", str, str)
+			data_len := len(data)
+			//fmt.Println(data, data_len)
 
-		written, err := log.AppendBytes([]byte(data), data_len)
-		if err != nil {
-			fmt.Println(err)
-		} else {
-			fmt.Printf("[%d] data written: %d\n", i, written)
+			written, err := log.AppendBytes([]byte(data), data_len)
+			if err != nil {
+				fmt.Println(err)
+			} else {
+				fmt.Printf("[%d] data written: %d\n", i, written)
+			}
+
 		}
+	*/
 
+	segment, pos, err := log.Search(19)
+	if err != nil {
+		fmt.Println(err)
 	}
+
+	if pos < 1 {
+		fmt.Println("cant find offset")
+	}
+
+	fmt.Println(pos, err)
+
+	messageLength, err := segment.Log.ReadUInt32(pos + 4)
+	fmt.Println(messageLength, err)
+
+	messageContent, err := segment.Log.ReadBytes(pos+8, int(messageLength))
+	fmt.Println(string(messageContent), err)
 
 	/*
 		filename := "./0000011111"
