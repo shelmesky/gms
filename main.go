@@ -65,7 +65,7 @@ func main() {
 		length -= 1
 
 		readCounter := 0
-		if segmentPos > 0 && segmentPos <= log.SegmentLength()-1 {
+		if segmentPos >= 0 && segmentPos <= log.SegmentLength()-1 {
 			for {
 				if readCounter >= length {
 					break
@@ -107,7 +107,7 @@ func main() {
 	}
 
 	// TODO: target为0时, 二分搜索的lo >= hi都为0, 导致退出的BUG
-	message, err := batchRead(36, 6)
+	message, err := batchRead(35, 6)
 	if err != nil && err != utils.IndexIsIllegal {
 		fmt.Println(err)
 	} else {
