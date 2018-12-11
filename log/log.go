@@ -732,8 +732,8 @@ func (log *DiskLog) Init(dirName string) error {
 
 	sort.Sort(fileList)
 
-	// 打开只读的segment
-	for i := 0; i < fileList.Len()-1; i++ {
+	// 打开只读的segment(只读的segments中包含active segment的一个只读取副本)
+	for i := 0; i < fileList.Len(); i++ {
 		file := fileList.Get(i)
 		fileBaseName := file.baseFileName
 		indexFileSize := file.IndexFileSize
