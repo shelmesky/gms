@@ -37,22 +37,23 @@ func main() {
 	message.ValuePayload = []byte("abcdef")
 
 	topic := topicsManager.GetTopic("mytopic")
-	Partition := topic.GetPartition(0)
-	log := Partition.GetLog()
-	data := message.Bytes()
-
-	fmt.Println(log.AppendBytes(data, len(data)))
 
 	/*
-		if topic != nil {
-			err = topic.AppendMessage("", &message)
-			if err != nil {
-				fmt.Println(err)
-			}
-		}
+		Partition := topic.GetPartition(0)
+		log := Partition.GetLog()
+		data := message.Bytes()
+
+		fmt.Println(log.AppendBytes(data, len(data)))
 	*/
 
-	//time.Sleep(time.Second * 3600)
+	if topic != nil {
+		err = topic.AppendMessage("", &message)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+
+	time.Sleep(time.Second * 3600)
 }
 
 func test1() {
