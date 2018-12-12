@@ -17,7 +17,7 @@ func main() {
 	fmt.Println(partition.CreatePartitionList("mytopic", 3))
 
 	var partitionList partition.PartitionList
-	err := partitionList.Init("mytopic")
+	err = partitionList.Init("mytopic")
 	if err != nil {
 		fmt.Println(err)
 	}

@@ -1,18 +1,27 @@
 package partition
 
 import (
+	"encoding/hex"
+	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
+	"github.com/shelmesky/highwayhash"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
 )
 
 const (
-	dataDir          = "./data"
 	maxPartitionNums = 99
+	KeyString        = "010102030405060807090A0B0C0D0E0FF0E0D0C0B0A090807060504030901000"
 )
+
+func Hash(data []byte) uint64 {
+	key, _ := hex.DecodeString(KeyString)
+	return highwayhash.Sum64([]byte("aa1"), key)
+}
 
 // 单个partition
 // 将为每个partition启动一个线程
@@ -103,8 +112,20 @@ func (partitionList *PartitionList) Init(topicName string) error {
 // topic: 标题名称
 // partition: 分区序号
 // message: 消息内容
-func (partitionList *PartitionList) AppendMessage(topic string, partition int, message *common.Message) {
+func (partitionList *PartitionList) AppendMessage(partition int, message *common.Message) {
+	var selectedPartition int
 
+	if message.KeyLength > 0 {
+		selectedPartition = int(Hash(message.KeyPayload) % uint64(partitionList.numPartitions))
+	} else {
+		selectedPartition = rand.Int() % partitionList.numPartitions
+	}
+
+	if partition, ok := partitionList.partitions[selectedPartition]; ok {
+		if partition != nil {
+			partition.queue <- message
+		}
+	}
 }
 
 // 发送消息到socket fd
@@ -112,6 +133,18 @@ func (patitionList *PartitionList) SendDataToSock() {
 
 }
 
-func (PartitionList *PartitionList) StartProcessor() {
-
+func (patitionList *PartitionList) StartProcessor() {
+	for idx, partition := range patitionList.partitions {
+		go func(idx int) {
+			for {
+				message := <-partition.queue
+				messageBytes := message.Bytes()
+				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))
+				if err != nil {
+					fmt.Println("append bytes to log failed:", err)
+				}
+				fmt.Printf("write [%d] bytes message.\n", dataWritten)
+			}
+		}(idx)
+	}
 }
