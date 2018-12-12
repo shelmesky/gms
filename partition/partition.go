@@ -10,10 +10,12 @@ import (
 )
 
 const (
-	dataDir = "./data"
+	dataDir          = "./data"
+	maxPartitionNums = 99
 )
 
 // 单个partition
+// 将为每个partition启动一个线程
 type Partition struct {
 	dirName string          // 目录名
 	log     disklog.DiskLog // 日志管理器
@@ -21,8 +23,8 @@ type Partition struct {
 }
 
 // 一组partition
+// 拥有同样的topicName
 type PartitionList struct {
-	dirName       string             // 存储一组partition的顶层目录名
 	topicName     string             // topic名
 	numPartitions int                // partition的数量
 	partitions    map[int]*Partition // 多个partition组成的map
@@ -31,13 +33,12 @@ type PartitionList struct {
 // 在目录下创建n个partition
 // dirName即是topic name
 func CreatePartitionList(dirName string, numPartitions int) error {
-	if err := os.Chdir(dataDir); err != nil {
-		return  err
-	}
-	if _, err := os.Stat(dirName); os.IsNotExist(err) {
+	var err error
+
+	if _, err = os.Stat(dirName); os.IsNotExist(err) {
 		err = os.Mkdir(dirName, 0775)
 		if err != nil {
-			return err
+			goto failed
 		}
 
 		// 创建N个partition, 序号从0开始
@@ -45,23 +46,57 @@ func CreatePartitionList(dirName string, numPartitions int) error {
 			partitionDirName := path.Join(dirName, dirName+"-"+strconv.Itoa(i))
 			err = os.Mkdir(partitionDirName, 0775)
 			if err != nil {
-				return err
+				goto failed
 			}
 
 			var log disklog.DiskLog
 			err = log.Init(partitionDirName)
 			if err != nil {
-				return err
+				goto failed
 			}
 		}
+
+		goto success
 	} else {
-		return utils.FileAlreadyExist
+		err = utils.FileAlreadyExist
+		goto failed
 	}
+
+failed:
+	return err
+success:
 	return nil
 }
 
 // 读取dirName下的文件夹并初始化PartitionList
-func (partitionList *PartitionList) Init(dirName string, numPartitions int) {
+func (partitionList *PartitionList) Init(topicName string) error {
+
+	partitionList.partitions = make(map[int]*Partition, 8)
+
+	// 循环读取maxPartitionNums个目录
+	for i := 0; i < maxPartitionNums; i++ {
+		partitionDirName := path.Join(topicName, topicName+"-"+strconv.Itoa(i))
+		if _, err := os.Stat(partitionDirName); !os.IsNotExist(err) {
+			var partition Partition
+			var log disklog.DiskLog
+
+			partition.dirName = partitionDirName
+
+			err = log.Init(partitionDirName)
+			if err != nil {
+				return err
+			}
+
+			partition.log = log
+			partition.queue = make(chan *common.Message, 1024)
+			partitionList.partitions[i] = &partition
+		}
+	}
+
+	partitionList.topicName = topicName
+	partitionList.numPartitions = len(partitionList.partitions)
+
+	return nil
 }
 
 // 追加消息到topic

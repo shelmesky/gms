@@ -9,7 +9,18 @@ import (
 )
 
 func main() {
+	if err := os.Chdir("./data"); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
 	fmt.Println(partition.CreatePartitionList("mytopic", 3))
+
+	var partitionList partition.PartitionList
+	err := partitionList.Init("mytopic")
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	/*
 	var log disklog.DiskLog
