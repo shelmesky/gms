@@ -44,6 +44,8 @@ func main() {
 		data := message.Bytes()
 
 		fmt.Println(log.AppendBytes(data, len(data)))
+		fmt.Println(log.AppendBytes(data, len(data)))
+		fmt.Println(log.AppendBytes(data, len(data)))
 	*/
 
 	if topic != nil {
@@ -51,9 +53,20 @@ func main() {
 		if err != nil {
 			fmt.Println(err)
 		}
+
+		err = topic.AppendMessage("", &message)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		err = topic.AppendMessage("", &message)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 
 	time.Sleep(time.Second * 3600)
+
 }
 
 func test1() {

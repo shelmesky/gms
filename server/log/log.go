@@ -22,7 +22,7 @@ const (
 	IndexEntrySize            = 8
 	IndexFileSize             = 1024 * 1024 * 1
 	LogFileSize               = 1024 * 1024 * 2
-	EntriesPerFile            = 4
+	EntriesPerFile            = 10
 	FileNameLength            = 19
 )
 
@@ -418,7 +418,7 @@ func (this *LogIndexSegment) LoadIndex() error {
 
 	if this.entrySize > 0 {
 		// 设置当前Index文件最后的offset和文件位置
-		this.currentOffset = lastOffset
+		this.currentOffset = lastOffset + 1
 
 		// 当index中的offset和message pos都为0, 但log文件中确实有消息的情况下
 		// 设置当前offset为1
