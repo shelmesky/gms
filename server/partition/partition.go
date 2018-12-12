@@ -1,9 +1,9 @@
 package partition
 
 import (
-	"github.com/shelmesky/gms/common"
-	"github.com/shelmesky/gms/log"
-	"github.com/shelmesky/gms/utils"
+	"github.com/shelmesky/gms/server/common"
+	"github.com/shelmesky/gms/server/log"
+	"github.com/shelmesky/gms/server/utils"
 	"os"
 	"path"
 	"strconv"

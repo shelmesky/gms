@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/shelmesky/gms/log"
-	"github.com/shelmesky/gms/partition"
+	"github.com/shelmesky/gms/server/log"
+	"github.com/shelmesky/gms/server/partition"
 	"os"
 	"time"
 )
@@ -23,11 +23,11 @@ func main() {
 	}
 
 	/*
-	var log disklog.DiskLog
-	err := log.Init("./data")
-	if err != nil {
-		fmt.Println(err)
-	}
+		var log disklog.DiskLog
+		err := log.Init("./data")
+		if err != nil {
+			fmt.Println(err)
+		}
 	*/
 
 	/*

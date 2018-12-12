@@ -3,7 +3,7 @@ package disklog
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/shelmesky/gms/utils"
+	"github.com/shelmesky/gms/server/utils"
 	"io/ioutil"
 	"math"
 	"os"
