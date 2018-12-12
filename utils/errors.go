@@ -14,4 +14,5 @@ var (
 	TargetNotFound           = errors.New("can not find target")
 	TargetGreatThanCommitted = errors.New("target great than committed in segment")
 	IndexIsIllegal           = errors.New("index of list is illegal")
+	FileAlreadyExist         = errors.New("directory or file is already exists")
 )

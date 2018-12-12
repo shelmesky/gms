@@ -3,6 +3,14 @@ package partition
 import (
 	"github.com/shelmesky/gms/common"
 	"github.com/shelmesky/gms/log"
+	"github.com/shelmesky/gms/utils"
+	"os"
+	"path"
+	"strconv"
+)
+
+const (
+	dataDir = "./data"
 )
 
 // 单个partition
@@ -22,8 +30,34 @@ type PartitionList struct {
 
 // 在目录下创建n个partition
 // dirName即是topic name
-func CreatePartitionList(dirName string, numPartitions int) {
-	
+func CreatePartitionList(dirName string, numPartitions int) error {
+	if err := os.Chdir(dataDir); err != nil {
+		return  err
+	}
+	if _, err := os.Stat(dirName); os.IsNotExist(err) {
+		err = os.Mkdir(dirName, 0775)
+		if err != nil {
+			return err
+		}
+
+		// 创建N个partition, 序号从0开始
+		for i := 0; i < numPartitions; i++ {
+			partitionDirName := path.Join(dirName, dirName+"-"+strconv.Itoa(i))
+			err = os.Mkdir(partitionDirName, 0775)
+			if err != nil {
+				return err
+			}
+
+			var log disklog.DiskLog
+			err = log.Init(partitionDirName)
+			if err != nil {
+				return err
+			}
+		}
+	} else {
+		return utils.FileAlreadyExist
+	}
+	return nil
 }
 
 // 读取dirName下的文件夹并初始化PartitionList
