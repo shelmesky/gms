@@ -330,6 +330,18 @@ func (this *LogIndexSegment) Close() error {
 	return nil
 }
 
+func (this *LogIndexSegment) ReallyNoLog() bool {
+	firstLogSize, err := this.Log.ReadUInt32(4)
+	if err != nil {
+		panic("read uint32 from log failed:" + this.Log.filename)
+	}
+	if firstLogSize == 0 {
+		return true
+	}
+
+	return false
+}
+
 /*
 从文件载入索引记录到内存数据
 索引在文件中的记录格式为:
@@ -381,8 +393,15 @@ func (this *LogIndexSegment) LoadIndex() error {
 				// 如已经读取了1条记录, 说明加上本次是连续两次记录为0, 要回退16个字节
 				// 如已经读取了大于1条即最少2条, 说明前一次读取是正常的, 则只要回退8字节
 				if this.entrySize == 1 {
-					this.Index.dataWritten = pos - 16
-					this.entrySize -= 1
+					// 当只有一条记录且offset和messagePos都为0的情况下
+					// 并不一定说明log文件没有记录
+					// 这里就需要读log文件的开始来确认
+					if this.ReallyNoLog() {
+						this.Index.dataWritten = pos - 16
+						this.entrySize -= 1
+					} else {
+						this.Index.dataWritten = pos - 8
+					}
 				} else if this.entrySize > 1 {
 					this.Index.dataWritten = pos - 8
 				}
@@ -400,6 +419,12 @@ func (this *LogIndexSegment) LoadIndex() error {
 	if this.entrySize > 0 {
 		// 设置当前Index文件最后的offset和文件位置
 		this.currentOffset = lastOffset
+
+		// 当index中的offset和message pos都为0, 但log文件中确实有消息的情况下
+		// 设置当前offset为1
+		if lastOffset == 0 && lastMessagePos == 0 && this.entrySize == 1 {
+			this.currentOffset = 1
+		}
 
 		// 读取最后一条消息的大小到lastMessageSize
 		lastMessageSize, err = this.Log.ReadUInt32(lastMessagePos + 4)

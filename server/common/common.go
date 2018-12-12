@@ -13,21 +13,26 @@ type Message struct {
 	ValuePayload []byte // value的内容
 }
 
-type Slice struct {
-	addr uintptr
-	len  int
-	cap  int
+func BytesToMessage(data []byte) *Message {
+	var m *Message = *(**Message)(unsafe.Pointer(&data))
+	return m
 }
 
-func (m *Message) Bytes() []byte {
-	length := unsafe.Sizeof(m)
+func (message *Message) Bytes() []byte {
+	length := unsafe.Sizeof(*message)
 	bytes := &Slice{
-		addr: uintptr(unsafe.Pointer(m)),
+		addr: uintptr(unsafe.Pointer(message)),
 		cap:  int(length),
 		len:  int(length),
 	}
 	data := *(*[]byte)(unsafe.Pointer(bytes))
 	return data
+}
+
+type Slice struct {
+	addr uintptr
+	len  int
+	cap  int
 }
 
 // 生产者写请求

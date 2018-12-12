@@ -10,12 +10,12 @@ func CreateTopic(topicName string, numPartitions int) error {
 }
 
 type Topics struct {
-	numTopics int
-	topicMap  map[string]partition.PartitionList
+	NumTopics int
+	TopicMap  map[string]partition.PartitionList
 }
 
-func (topics Topics) Init() error {
-	topics.topicMap = make(map[string]partition.PartitionList, 16)
+func (topics *Topics) Init() error {
+	topics.TopicMap = make(map[string]partition.PartitionList, 16)
 
 	dirs, err := ioutil.ReadDir(".")
 	if err != nil {
@@ -33,22 +33,24 @@ func (topics Topics) Init() error {
 				return err
 			}
 
-			topics.topicMap[topicName] = partitionList
-			topics.numTopics += 1
+			topics.TopicMap[topicName] = partitionList
+			topics.NumTopics += 1
+
+			partitionList.StartWorker()
 		}
 	}
 
 	return nil
 }
 
-func (topics Topics) GetTopic(topicName string) *partition.PartitionList {
-		if value, ok := topics.topicMap[topicName]; ok {
+func (topics *Topics) GetTopic(topicName string) *partition.PartitionList {
+		if value, ok := topics.TopicMap[topicName]; ok {
 			return &value
 		}
 
 		return nil
 }
 
-func (topics Topics) SetTopic(topicName string, topic partition.PartitionList) {
-	topics.topicMap[topicName] = topic
+func (topics *Topics) SetTopic(topicName string, topic partition.PartitionList) {
+	topics.TopicMap[topicName] = topic
 }

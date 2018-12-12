@@ -27,8 +27,12 @@ func Hash(data []byte) uint64 {
 // 将为每个partition启动一个线程
 type Partition struct {
 	dirName string          // 目录名
-	log     disklog.DiskLog // 日志管理器
+	log     *disklog.DiskLog // 日志管理器
 	queue   chan *common.Message
+}
+
+func (p *Partition) GetLog() *disklog.DiskLog {
+	return p.log
 }
 
 // 一组partition
@@ -77,6 +81,14 @@ success:
 	return nil
 }
 
+func (partitionList *PartitionList) GetPartition(partitionIndex int) *Partition{
+	if value, ok := partitionList.partitions[partitionIndex]; ok {
+		return value
+	}
+
+	return nil
+}
+
 // 读取dirName下的文件夹并初始化PartitionList
 func (partitionList *PartitionList) Init(topicName string) error {
 
@@ -96,7 +108,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 				return err
 			}
 
-			partition.log = log
+			partition.log = &log
 			partition.queue = make(chan *common.Message, 1024)
 			partitionList.partitions[i] = &partition
 		}
@@ -112,13 +124,21 @@ func (partitionList *PartitionList) Init(topicName string) error {
 // topic: 标题名称
 // partition: 分区序号
 // message: 消息内容
-func (partitionList *PartitionList) AppendMessage(partition int, message *common.Message) {
+func (partitionList *PartitionList) AppendMessage(partitionIndex string, message *common.Message) error {
 	var selectedPartition int
+	var err error
 
-	if message.KeyLength > 0 {
-		selectedPartition = int(Hash(message.KeyPayload) % uint64(partitionList.numPartitions))
+	if len(partitionIndex) > 0 {
+		selectedPartition, err = strconv.Atoi(partitionIndex)
+		if err != nil {
+			return err
+		}
 	} else {
-		selectedPartition = rand.Int() % partitionList.numPartitions
+		if message.KeyLength > 0 {
+			selectedPartition = int(Hash(message.KeyPayload) % uint64(partitionList.numPartitions))
+		} else {
+			selectedPartition = rand.Int() % partitionList.numPartitions
+		}
 	}
 
 	if partition, ok := partitionList.partitions[selectedPartition]; ok {
@@ -126,6 +146,8 @@ func (partitionList *PartitionList) AppendMessage(partition int, message *common
 			partition.queue <- message
 		}
 	}
+
+	return nil
 }
 
 // 发送消息到socket fd
@@ -133,18 +155,21 @@ func (patitionList *PartitionList) SendDataToSock() {
 
 }
 
-func (patitionList *PartitionList) StartProcessor() {
-	for idx, partition := range patitionList.partitions {
-		go func(idx int) {
+func (patitionList *PartitionList) StartWorker() {
+	for idx, value := range patitionList.partitions {
+		go func(idx int, partition *Partition) {
+			fmt.Printf("goroutine start for partition: [%s].\n", partition.dirName)
 			for {
 				message := <-partition.queue
 				messageBytes := message.Bytes()
+				fmt.Println(messageBytes)
+				fmt.Println(len(messageBytes))
 				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))
 				if err != nil {
 					fmt.Println("append bytes to log failed:", err)
 				}
-				fmt.Printf("write [%d] bytes message.\n", dataWritten)
+				fmt.Printf("write [%d] bytes message to partition: [%s].\n", dataWritten, partition.dirName)
 			}
-		}(idx)
+		}(idx, value)
 	}
 }

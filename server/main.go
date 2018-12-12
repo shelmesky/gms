@@ -2,22 +2,65 @@ package main
 
 import (
 	"fmt"
+	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/partition"
+	"github.com/shelmesky/gms/server/topics"
 	"os"
 	"time"
 )
 
 func main() {
+
 	if err := os.Chdir("./data"); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
 	}
 
+	//test1()
+	//os.Exit(0)
+
+	var topicsManager topics.Topics
+	err := topicsManager.Init()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	var message common.Message
+	message.CRC32 = 123456
+	message.Magic = 111
+	message.Attributes = 222
+	message.KeyLength = 4
+	message.KeyPayload = []byte("abcd")
+	message.ValueLength = 6
+	message.ValuePayload = []byte("abcdef")
+
+	topic := topicsManager.GetTopic("mytopic")
+	Partition := topic.GetPartition(0)
+	log := Partition.GetLog()
+	data := message.Bytes()
+
+	fmt.Println(log.AppendBytes(data, len(data)))
+
+	/*
+		if topic != nil {
+			err = topic.AppendMessage("", &message)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
+	*/
+
+	//time.Sleep(time.Second * 3600)
+}
+
+func test1() {
+
 	fmt.Println(partition.CreatePartitionList("mytopic", 3))
 
 	var partitionList partition.PartitionList
-	err = partitionList.Init("mytopic")
+	err := partitionList.Init("mytopic")
 	if err != nil {
 		fmt.Println(err)
 	}
