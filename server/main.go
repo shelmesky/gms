@@ -1,16 +1,46 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/partition"
+	pb "github.com/shelmesky/gms/server/protobuf"
 	"github.com/shelmesky/gms/server/topics"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+	"log"
+	"net"
 	"os"
 	"time"
 )
 
+const (
+	port = ":50051"
+)
+
+type server struct{}
+
+func (s *server) SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {
+	return &pb.WriteMessageResponse{Code: 999}, nil
+}
+
 func main() {
+	lis, err := net.Listen("tcp", port)
+	if err != nil {
+		log.Fatalf("failed to listen: %v", err)
+	}
+	s := grpc.NewServer()
+	pb.RegisterGMSServer(s, &server{})
+	// Register reflection service on gRPC server.
+	reflection.Register(s)
+	if err := s.Serve(lis); err != nil {
+		log.Fatalf("failed to serve: %v", err)
+	}
+}
+
+func test2() {
 
 	if err := os.Chdir("./data"); err != nil {
 		fmt.Println(err)

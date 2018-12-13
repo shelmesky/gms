@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+
+service GMS {
+    rpc SendMessage(WriteMessageRequest) returns (WriteMessageResponse) {}
+}
+
+message MessageType {
+    uint32  CRC32 = 1;
+    uint32  Magic = 2;
+    uint32  Attribytes = 3;
+    uint64  KeyLength = 4;
+    bytes   KeyPayLoad = 5;
+    uint64  ValueLength = 6;
+    bytes   ValuePayLoad = 7;
+}
+
+message WriteMessageRequest {
+    uint32      partition = 1; 
+    MessageType message = 2;
+}
+
+message WriteMessageResponse {
+    uint32  code = 1;
+}
