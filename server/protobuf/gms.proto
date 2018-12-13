@@ -8,18 +8,20 @@ service GMS {
 message MessageType {
     uint32  CRC32 = 1;
     uint32  Magic = 2;
-    uint32  Attribytes = 3;
+    uint32  Attributes = 3;
     uint64  KeyLength = 4;
-    bytes   KeyPayLoad = 5;
+    bytes   KeyPayload = 5;
     uint64  ValueLength = 6;
-    bytes   ValuePayLoad = 7;
+    bytes   ValuePayload = 7;
 }
 
 message WriteMessageRequest {
-    uint32      partition = 1; 
-    MessageType message = 2;
+    string      Partition = 1; 
+    string      TopicName = 2;
+    MessageType message = 3;
 }
 
 message WriteMessageResponse {
-    uint32  code = 1;
+    int32   Code = 1;
+    string  Result = 2;
 }

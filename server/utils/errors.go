@@ -15,4 +15,6 @@ var (
 	TargetGreatThanCommitted = errors.New("target great than committed in segment")
 	IndexIsIllegal           = errors.New("index of list is illegal")
 	FileAlreadyExist         = errors.New("directory or file is already exists")
+	ParameterTopicMissed     = errors.New("parameter topic name was missed")
+	ServerError              = errors.New("server error was occurred")
 )

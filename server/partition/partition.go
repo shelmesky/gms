@@ -7,6 +7,7 @@ import (
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
 	"github.com/shelmesky/highwayhash"
+	pb "github.com/shelmesky/gms/server/protobuf"
 	"math/rand"
 	"os"
 	"path"
@@ -28,7 +29,7 @@ func Hash(data []byte) uint64 {
 type Partition struct {
 	dirName string          // 目录名
 	log     *disklog.DiskLog // 日志管理器
-	queue   chan *common.Message
+	queue   chan *pb.MessageType
 }
 
 func (p *Partition) GetLog() *disklog.DiskLog {
@@ -109,7 +110,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 			}
 
 			partition.log = &log
-			partition.queue = make(chan *common.Message, 1024)
+			partition.queue = make(chan *pb.MessageType, 1024)
 			partitionList.partitions[i] = &partition
 		}
 	}
@@ -124,7 +125,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 // topic: 标题名称
 // partition: 分区序号
 // message: 消息内容
-func (partitionList *PartitionList) AppendMessage(partitionIndex string, message *common.Message) error {
+func (partitionList *PartitionList) AppendMessage(partitionIndex string, request *pb.WriteMessageRequest) error {
 	var selectedPartition int
 	var err error
 
@@ -134,8 +135,8 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, message
 			return err
 		}
 	} else {
-		if message.KeyLength > 0 {
-			selectedPartition = int(Hash(message.KeyPayload) % uint64(partitionList.numPartitions))
+		if request.Message.KeyLength > 0 {
+			selectedPartition = int(Hash(request.Message.KeyPayload) % uint64(partitionList.numPartitions))
 		} else {
 			selectedPartition = rand.Int() % partitionList.numPartitions
 		}
@@ -143,7 +144,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, message
 
 	if partition, ok := partitionList.partitions[selectedPartition]; ok {
 		if partition != nil {
-			partition.queue <- message
+			partition.queue <- request.Message
 		}
 	}
 
@@ -161,7 +162,7 @@ func (patitionList *PartitionList) StartWorker() {
 			fmt.Printf("goroutine start for partition: [%s].\n", partition.dirName)
 			for {
 				message := <-partition.queue
-				messageBytes := message.Bytes()
+				messageBytes := common.MessageToBytes(message)
 				fmt.Println(messageBytes)
 				fmt.Println(len(messageBytes))
 				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))

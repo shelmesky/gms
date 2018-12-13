@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/partition"
 	pb "github.com/shelmesky/gms/server/protobuf"
 	"github.com/shelmesky/gms/server/topics"
+	"github.com/shelmesky/gms/server/utils"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 	"log"
@@ -17,13 +17,54 @@ import (
 )
 
 const (
-	port = ":50051"
+	port = "0.0.0.0:50051"
 )
+
+var (
+	topicManager *topics.Topics
+)
+
+func init() {
+	if err := os.Chdir("./data"); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	var t topics.Topics
+	err := t.Init()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	topicManager = &t
+}
 
 type server struct{}
 
 func (s *server) SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {
-	return &pb.WriteMessageResponse{Code: 999}, nil
+	fmt.Println("receive request:", *in)
+	topicName := in.TopicName
+
+	if len(topicName) > 0 {
+		topic := topicManager.GetTopic(topicName)
+
+		if topic != nil {
+			partitionIndex := in.Partition
+			err := topic.AppendMessage(partitionIndex, in)
+			if err != nil {
+				return &pb.WriteMessageResponse{Code: -1, Result: err.Error()}, err
+			}
+			return &pb.WriteMessageResponse{Code: 0}, nil
+
+		} else {
+			return &pb.WriteMessageResponse{Code: -2, Result: utils.ServerError.Error()},
+				utils.ServerError
+		}
+
+	}
+
+	return &pb.WriteMessageResponse{Code: -3, Result: utils.ParameterTopicMissed.Error()},
+		utils.ParameterTopicMissed
 }
 
 func main() {
@@ -33,70 +74,12 @@ func main() {
 	}
 	s := grpc.NewServer()
 	pb.RegisterGMSServer(s, &server{})
+
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
-}
-
-func test2() {
-
-	if err := os.Chdir("./data"); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	//test1()
-	//os.Exit(0)
-
-	var topicsManager topics.Topics
-	err := topicsManager.Init()
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	var message common.Message
-	message.CRC32 = 123456
-	message.Magic = 111
-	message.Attributes = 222
-	message.KeyLength = 4
-	message.KeyPayload = []byte("abcd")
-	message.ValueLength = 6
-	message.ValuePayload = []byte("abcdef")
-
-	topic := topicsManager.GetTopic("mytopic")
-
-	/*
-		Partition := topic.GetPartition(0)
-		log := Partition.GetLog()
-		data := message.Bytes()
-
-		fmt.Println(log.AppendBytes(data, len(data)))
-		fmt.Println(log.AppendBytes(data, len(data)))
-		fmt.Println(log.AppendBytes(data, len(data)))
-	*/
-
-	if topic != nil {
-		err = topic.AppendMessage("", &message)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		err = topic.AppendMessage("", &message)
-		if err != nil {
-			fmt.Println(err)
-		}
-
-		err = topic.AppendMessage("", &message)
-		if err != nil {
-			fmt.Println(err)
-		}
-	}
-
-	time.Sleep(time.Second * 3600)
-
 }
 
 func test1() {
