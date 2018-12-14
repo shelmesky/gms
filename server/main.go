@@ -42,7 +42,7 @@ func init() {
 type server struct{}
 
 func (s *server) SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {
-	fmt.Println("receive request:", *in)
+	//fmt.Println("receive request:", *in)
 	topicName := in.TopicName
 
 	if len(topicName) > 0 {

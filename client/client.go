@@ -26,20 +26,22 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
-	var message pb.MessageType
-	message.CRC32 = 1234
-	message.Magic = 999
-	message.Attributes = 888
-	message.KeyLength = 3
-	message.KeyPayload = []byte("abc")
-	message.ValueLength = 7
-	message.ValuePayload = []byte("1234567")
+	for i:=0; i<1; i++ {
 
-	var writeRequest pb.WriteMessageRequest
-	writeRequest.TopicName = "mytopic"
-	writeRequest.Partition = "0"
-	writeRequest.Message = &message
+		var message pb.MessageType
+		message.CRC32 = 1234
+		message.Magic = 999
+		message.Attributes = 888
+		message.KeyLength = 3
+		message.KeyPayload = []byte(fmt.Sprintf("%d%d%d", i,i,i))
+		message.ValueLength = 7
+		message.ValuePayload = []byte("1234567")
 
-	response, err := c.SendMessage(ctx, &writeRequest)
-	fmt.Println(response, err)
+		var writeRequest pb.WriteMessageRequest
+		writeRequest.TopicName = "mytopic"
+		writeRequest.Partition = ""
+		writeRequest.Message = append(writeRequest.Message, &message)
+		response, err := c.SendMessage(ctx, &writeRequest)
+		fmt.Println(response, err)
+	}
 }

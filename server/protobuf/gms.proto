@@ -18,7 +18,7 @@ message MessageType {
 message WriteMessageRequest {
     string      Partition = 1; 
     string      TopicName = 2;
-    MessageType message = 3;
+    repeated    MessageType message = 3;
 }
 
 message WriteMessageResponse {

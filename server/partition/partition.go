@@ -21,7 +21,7 @@ const (
 
 func Hash(data []byte) uint64 {
 	key, _ := hex.DecodeString(KeyString)
-	return highwayhash.Sum64([]byte("aa1"), key)
+	return highwayhash.Sum64(data, key)
 }
 
 // 单个partition
@@ -128,23 +128,29 @@ func (partitionList *PartitionList) Init(topicName string) error {
 func (partitionList *PartitionList) AppendMessage(partitionIndex string, request *pb.WriteMessageRequest) error {
 	var selectedPartition int
 	var err error
+	messagesLength := len(request.Message)
 
-	if len(partitionIndex) > 0 {
-		selectedPartition, err = strconv.Atoi(partitionIndex)
-		if err != nil {
-			return err
-		}
-	} else {
-		if request.Message.KeyLength > 0 {
-			selectedPartition = int(Hash(request.Message.KeyPayload) % uint64(partitionList.numPartitions))
+	for i:=0; i<messagesLength; i++ {
+		message := request.Message[i]
+
+		if len(partitionIndex) > 0 {
+			selectedPartition, err = strconv.Atoi(partitionIndex)
+			if err != nil {
+				return err
+			}
 		} else {
-			selectedPartition = rand.Int() % partitionList.numPartitions
+			if message.KeyLength > 0 {
+				keyHash := uint64(Hash(message.KeyPayload))
+				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
+			} else {
+				selectedPartition = rand.Int() % partitionList.numPartitions
+			}
 		}
-	}
 
-	if partition, ok := partitionList.partitions[selectedPartition]; ok {
-		if partition != nil {
-			partition.queue <- request.Message
+		if partition, ok := partitionList.partitions[selectedPartition]; ok {
+			if partition != nil {
+				partition.queue <- message
+			}
 		}
 	}
 
@@ -163,8 +169,6 @@ func (patitionList *PartitionList) StartWorker() {
 			for {
 				message := <-partition.queue
 				messageBytes := common.MessageToBytes(message)
-				fmt.Println(messageBytes)
-				fmt.Println(len(messageBytes))
 				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))
 				if err != nil {
 					fmt.Println("append bytes to log failed:", err)
