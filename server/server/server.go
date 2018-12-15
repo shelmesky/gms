@@ -152,13 +152,24 @@ func HandleConnection(client Client) {
 		metaDataEndPos := metaDataStartPos + int(request.MetaDataLength)
 		metaData := buffer[metaDataStartPos:metaDataEndPos]
 
-		bodyStartPos := metaDataEndPos
-		bodyEndPos := bodyStartPos + int(request.BodyLength)
-		body := buffer[bodyStartPos:bodyEndPos]
+		messageHeadStartPos := metaDataEndPos
+		messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
+		messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
+		messageHead := common.BytesToMessage(messageHeadBytes)
+
+		messageKeyStartPos := messageHeadEndPos
+		messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
+		messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
+
+		messageValueStartPos := messageKeyEndPos
+		messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
+		messageValue := buffer[messageValueStartPos:messageValueEndPos]
 
 		fmt.Println("receive request:", request)
 		fmt.Println("receive metadata", string(metaData))
-		fmt.Println("receive body", string(body))
+		fmt.Println("receive message head:", messageHead)
+		fmt.Println("receive message key:", string(messageKey))
+		fmt.Println("receive message value:", string(messageValue))
 	}
 
 	fmt.Println("close connection:", client.Conn.Close())

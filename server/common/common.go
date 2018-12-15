@@ -5,8 +5,9 @@ import (
 )
 
 const (
-	REQUEST_LEN = 24
-	READ_BUF_SIZE = 4096
+	REQUEST_LEN    = 24
+	MESSAGE_LEN    = 40
+	READ_BUF_SIZE  = 4096
 	WRITE_BUF_SIZE = 4096
 )
 
@@ -19,11 +20,11 @@ type Request struct {
 }
 
 type MessageType struct {
-	CRC32        uint32
-	Magic        uint32
-	Attributes   uint32
-	KeyLength    uint64
-	ValueLength  uint64
+	CRC32       uint32
+	Magic       uint32
+	Attributes  uint32
+	KeyLength   uint64
+	ValueLength uint64
 }
 
 type Slice struct {
