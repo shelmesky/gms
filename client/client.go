@@ -28,15 +28,10 @@ func NewBody(key, value []byte) ([]byte, uint32) {
 
 	messageTotalLength := messageBytesLen + int(message.KeyLength) + int(message.ValueLength)
 	message.Length = uint64(messageTotalLength)
+
 	messageBytes := common.MessageToBytes(&message)
 
-	messageBuffer := make([]byte, messageTotalLength)
-	copy(messageBuffer, messageBytes)
-	copy(messageBuffer[messageBytesLen:], key)
-	copy(messageBuffer[messageBytesLen+int(message.KeyLength):], value)
-	CRC32(messageBuffer)
-
-	return messageBuffer, uint32(len(messageBuffer))
+	return messageBytes, uint32(len(messageBytes))
 }
 
 func NewWriteMessageMeta(topicName, partitionNum string) ([]byte, uint32) {
@@ -49,17 +44,18 @@ func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, con
 
 	var request common.Request
 	var MetaData []byte
-	var Body []byte
+	var messageHead []byte
 
 	request.Version = 1001
 	request.Sequence = 1
 
 	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, PartitionNum)
 
-	Body, request.BodyLength = NewBody(bodyKey, bodyValue)
+	messageHead, request.BodyLength = NewBody(bodyKey, bodyValue)
 
 	requestLength := common.REQUEST_LEN
-	request.TotalLength = uint64(requestLength + int(request.MetaDataLength) + int(request.BodyLength))
+	request.TotalLength = uint64(requestLength + int(request.MetaDataLength) +
+		int(request.BodyLength) + len(bodyKey) + len(bodyValue))
 
 	requestBytes := common.RequestToBytes(&request)
 
@@ -70,7 +66,9 @@ func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, con
 	netBuffer = append(netBuffer, totalLenBuf)
 	netBuffer = append(netBuffer, requestBytes)
 	netBuffer = append(netBuffer, MetaData)
-	netBuffer = append(netBuffer, Body)
+	netBuffer = append(netBuffer, messageHead)
+	netBuffer = append(netBuffer, bodyKey)
+	netBuffer = append(netBuffer, bodyValue)
 	n, err := netBuffer.WriteTo(conn) // this will use writev in linux
 	if err == io.EOF {
 		fmt.Println("connection lost")
