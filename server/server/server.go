@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
@@ -127,6 +128,12 @@ func NewClient(conn *net.TCPConn) Client {
 	return client
 }
 
+func GetAction(metaData []byte) int {
+	actionBytes := metaData[:4]
+	action := binary.LittleEndian.Uint32(actionBytes)
+	return int(action)
+}
+
 func HandleConnection(client Client) {
 	for {
 		totalLength, err := client.ReadBuffer.ReadUint64()
@@ -152,6 +159,10 @@ func HandleConnection(client Client) {
 		metaDataEndPos := metaDataStartPos + int(request.MetaDataLength)
 		metaData := buffer[metaDataStartPos:metaDataEndPos]
 
+		fullMessageStartPos := metaDataEndPos
+		fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
+		fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
+
 		messageHeadStartPos := metaDataEndPos
 		messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
 		messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
@@ -165,30 +176,40 @@ func HandleConnection(client Client) {
 		messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
 		messageValue := buffer[messageValueStartPos:messageValueEndPos]
 
-		fmt.Println("receive request:", request)
-		fmt.Println("receive metadata", string(metaData))
-		fmt.Println("receive message head:", messageHead)
-		fmt.Println("receive message key:", string(messageKey))
-		fmt.Println("receive message value:", string(messageValue))
+		fmt.Printf("***********************************************\n")
+		fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
+		fmt.Printf("receive [%d] metadata %v\n", len(metaData), metaData)
+		fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
+		fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
+		fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
+		fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
+		fmt.Printf("***********************************************\n\n")
+
+		actionNum := GetAction(metaData)
+		if actionNum == common.Write {
+			action := common.BytesToWriteMessageAction(metaData)
+			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
+			fmt.Println(topicName, partitionNum)
+		}
 	}
 
 	fmt.Println("close connection:", client.Conn.Close())
 }
 
-func StartServer(listener net.Listener) {
+func StartServer(listener *net.TCPListener) {
 	for {
-		conn, err := listener.Accept()
+		conn, err := listener.AcceptTCP()
 		if err != nil {
 			fmt.Println("Accept() failed:", err)
 			continue
 		}
 
-		tcpConn := conn.(*net.TCPConn)
-		sockFile, err := tcpConn.File()
+		sockFile, err := conn.File()
 		if err != nil {
 			panic(err.Error())
 		}
-		client := NewClient(tcpConn)
+		client := NewClient(conn)
 		client.SockFD = int(sockFile.Fd())
 
 		go HandleConnection(client)
@@ -196,7 +217,8 @@ func StartServer(listener net.Listener) {
 }
 
 func Run(address string) {
-	listen, err := net.Listen("tcp", address)
+	addr := &net.TCPAddr{net.ParseIP("127.0.0.1"), 50051, ""}
+	listen, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}

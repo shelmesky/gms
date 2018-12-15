@@ -23,10 +23,13 @@ func NewBody(key, value []byte) ([]byte, uint32) {
 	message.KeyLength = uint64(len(key))
 	message.ValueLength = uint64(len(value))
 
-	messageBytes := common.MessageToBytes(&message)
 	messageBytesLen := common.MESSAGE_LEN
 
-	messageBuffer := make([]byte, messageBytesLen+int(message.KeyLength)+int(message.ValueLength))
+	messageTotalLength := messageBytesLen + int(message.KeyLength) + int(message.ValueLength)
+	message.Length = uint64(messageTotalLength)
+	messageBytes := common.MessageToBytes(&message)
+
+	messageBuffer := make([]byte, messageTotalLength)
 	copy(messageBuffer, messageBytes)
 	copy(messageBuffer[messageBytesLen:], key)
 	copy(messageBuffer[messageBytesLen+int(message.KeyLength):], value)
@@ -35,18 +38,12 @@ func NewBody(key, value []byte) ([]byte, uint32) {
 	return messageBuffer, uint32(len(messageBuffer))
 }
 
-func NewMeta() ([]byte, uint32) {
-	meta := []byte("001122")
+func NewWriteMessageMeta(topicName, partitionNum string) ([]byte, uint32) {
+	meta := common.NewWriteMessageAction(topicName, partitionNum)
 	return meta, uint32(len(meta))
 }
 
-func main() {
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		fmt.Println("dial failed:", err)
-		return
-	}
-
+func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, conn *net.TCPConn) {
 	var request common.Request
 	var MetaData []byte
 	var Body []byte
@@ -54,10 +51,8 @@ func main() {
 	request.Version = 1001
 	request.Sequence = 1
 
-	MetaData, request.MetaDataLength = NewMeta()
+	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, PartitionNum)
 
-	bodyKey := []byte("key")
-	bodyValue := []byte("value")
 	Body, request.BodyLength = NewBody(bodyKey, bodyValue)
 
 	requestLength := common.REQUEST_LEN
@@ -88,6 +83,7 @@ func main() {
 		fmt.Println("write not satisfied length:", n)
 		return
 	}
+	fmt.Println("send request len:", n)
 
 	// send meta data
 	n, err = conn.Write(MetaData)
@@ -99,6 +95,7 @@ func main() {
 		fmt.Println("write not satisfied length:", n)
 		return
 	}
+	fmt.Println("send meta data len:", request.MetaDataLength)
 
 	// send body
 	n, err = conn.Write(Body)
@@ -110,5 +107,19 @@ func main() {
 		fmt.Println("write not satisfied length:", n)
 		return
 	}
+	fmt.Println("send body len:", request.BodyLength)
 
+}
+
+func main() {
+	addr := &net.TCPAddr{net.ParseIP("127.0.0.1"), 50051, ""}
+	conn, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		fmt.Println("dial failed:", err)
+		return
+	}
+
+	key := []byte("key")
+	value := []byte("value")
+	WriteMessage("mytopic", "12", key, value, conn)
 }
