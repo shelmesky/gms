@@ -122,8 +122,8 @@ type Client struct {
 func NewClient(conn *net.TCPConn) Client {
 	var client Client
 	client.Conn = conn
-	client.ReadBuffer = NewSocketBuffer(4096, conn)
-	client.WriteBuffer = NewSocketBuffer(4096, conn)
+	client.ReadBuffer = NewSocketBuffer(common.READ_BUF_SIZE, conn)
+	client.WriteBuffer = NewSocketBuffer(common.WRITE_BUF_SIZE, conn)
 	return client
 }
 
@@ -157,7 +157,7 @@ func HandleConnection(client Client) {
 		body := buffer[bodyStartPos:bodyEndPos]
 
 		fmt.Println("receive request:", request)
-		fmt.Println("receive metadata",  string(metaData))
+		fmt.Println("receive metadata", string(metaData))
 		fmt.Println("receive body", string(body))
 	}
 

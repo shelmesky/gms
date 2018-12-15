@@ -6,6 +6,8 @@ import (
 
 const (
 	REQUEST_LEN = 24
+	READ_BUF_SIZE = 4096
+	WRITE_BUF_SIZE = 4096
 )
 
 type Request struct {
@@ -21,9 +23,7 @@ type MessageType struct {
 	Magic        uint32
 	Attributes   uint32
 	KeyLength    uint64
-	KeyPayload   []byte
 	ValueLength  uint64
-	ValuePayload []byte
 }
 
 type Slice struct {
