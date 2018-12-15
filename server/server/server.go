@@ -53,6 +53,9 @@ func (b *SocketBuffer) ReadBytes(buffer []byte, size int) int {
 		size = int(math.Min(float64(size), float64(b.in-b.out)))
 		length = int(math.Min(float64(size), float64(b.size-(b.out&(b.size-1)))))
 		start := b.out & (b.size - 1)
+		// TODO: 性能优化
+		// 当ring buffer中的数据长度满足需求, 且是连续的(没有回绕)
+		// 应该直接返回ring buffer的slice切片, 而不是copy
 		copy(buffer, b.buffer[start:start+length])
 		copy(buffer[length:], b.buffer[0:size-length])
 		b.out += size
