@@ -11,7 +11,8 @@ import (
 )
 
 const (
-	address = "0.0.0.0:50051"
+	address = "0.0.0.0"
+	port    = 50051
 )
 
 var (
@@ -62,7 +63,7 @@ func SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMess
 */
 
 func main() {
-	server.Run(address)
+	server.Run(address, port)
 }
 
 func test1() {

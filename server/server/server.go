@@ -219,8 +219,8 @@ func StartServer(listener *net.TCPListener) {
 	}
 }
 
-func Run(address string) {
-	addr := &net.TCPAddr{net.ParseIP("127.0.0.1"), 50051, ""}
+func Run(address string, port int) {
+	addr := &net.TCPAddr{net.ParseIP(address), port, ""}
 	listen, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
