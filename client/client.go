@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
+	"io"
 	"net"
 )
 
@@ -44,6 +45,8 @@ func NewWriteMessageMeta(topicName, partitionNum string) ([]byte, uint32) {
 }
 
 func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, conn *net.TCPConn) {
+	var netBuffer net.Buffers
+
 	var request common.Request
 	var MetaData []byte
 	var Body []byte
@@ -60,55 +63,26 @@ func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, con
 
 	requestBytes := common.RequestToBytes(&request)
 
-	// send total length of whole message
+	// total length of whole message
 	totalLenBuf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(totalLenBuf, request.TotalLength)
-	n, err := conn.Write(totalLenBuf)
-	if err != nil {
-		fmt.Println("write failed:", err)
-		return
-	}
-	if n != 8 {
-		fmt.Println("write not satisfied length:", n)
+
+	netBuffer = append(netBuffer, totalLenBuf)
+	netBuffer = append(netBuffer, requestBytes)
+	netBuffer = append(netBuffer, MetaData)
+	netBuffer = append(netBuffer, Body)
+	n, err := netBuffer.WriteTo(conn) // this will use writev in linux
+	if err == io.EOF {
+		fmt.Println("connection lost")
 		return
 	}
 
-	// send request head
-	n, err = conn.Write(requestBytes)
-	if err != nil {
-		fmt.Println("write failed:", err)
+	if n-8 != int64(request.TotalLength) {
+		fmt.Printf("write not satisfied [%d] length: %d\n", request.TotalLength, n)
 		return
 	}
-	if n != requestLength {
-		fmt.Println("write not satisfied length:", n)
-		return
-	}
-	fmt.Println("send request len:", n)
 
-	// send meta data
-	n, err = conn.Write(MetaData)
-	if err != nil {
-		fmt.Println("write failed:", err)
-		return
-	}
-	if n != int(request.MetaDataLength) {
-		fmt.Println("write not satisfied length:", n)
-		return
-	}
-	fmt.Println("send meta data len:", request.MetaDataLength)
-
-	// send body
-	n, err = conn.Write(Body)
-	if err != nil {
-		fmt.Println("write failed:", err)
-		return
-	}
-	if n != int(request.BodyLength) {
-		fmt.Println("write not satisfied length:", n)
-		return
-	}
-	fmt.Println("send body len:", request.BodyLength)
-
+	fmt.Printf("write [%d] bytes\n", n)
 }
 
 func main() {
