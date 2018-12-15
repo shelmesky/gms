@@ -1,23 +1,17 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/partition"
-	pb "github.com/shelmesky/gms/server/protobuf"
+	"github.com/shelmesky/gms/server/server"
 	"github.com/shelmesky/gms/server/topics"
-	"github.com/shelmesky/gms/server/utils"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
-	"log"
-	"net"
 	"os"
 	"time"
 )
 
 const (
-	port = "0.0.0.0:50051"
+	address = "0.0.0.0:50051"
 )
 
 var (
@@ -39,9 +33,8 @@ func init() {
 	topicManager = &t
 }
 
-type server struct{}
-
-func (s *server) SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {
+/*
+func SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {
 	//fmt.Println("receive request:", *in)
 	topicName := in.TopicName
 
@@ -66,20 +59,10 @@ func (s *server) SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*
 	return &pb.WriteMessageResponse{Code: -3, Result: utils.ParameterTopicMissed.Error()},
 		utils.ParameterTopicMissed
 }
+*/
 
 func main() {
-	lis, err := net.Listen("tcp", port)
-	if err != nil {
-		log.Fatalf("failed to listen: %v", err)
-	}
-	s := grpc.NewServer()
-	pb.RegisterGMSServer(s, &server{})
-
-	// Register reflection service on gRPC server.
-	reflection.Register(s)
-	if err := s.Serve(lis); err != nil {
-		log.Fatalf("failed to serve: %v", err)
-	}
+	server.Run(address)
 }
 
 func test1() {

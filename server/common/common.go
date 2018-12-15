@@ -1,9 +1,30 @@
 package common
 
 import (
-	pb "github.com/shelmesky/gms/server/protobuf"
 	"unsafe"
 )
+
+const (
+	REQUEST_LEN = 24
+)
+
+type Request struct {
+	TotalLength    uint64
+	Version        uint16
+	Sequence       uint32
+	MetaDataLength uint32
+	BodyLength     uint32
+}
+
+type MessageType struct {
+	CRC32        uint32
+	Magic        uint32
+	Attributes   uint32
+	KeyLength    uint64
+	KeyPayload   []byte
+	ValueLength  uint64
+	ValuePayload []byte
+}
 
 type Slice struct {
 	addr uintptr
@@ -11,16 +32,31 @@ type Slice struct {
 	cap  int
 }
 
-
-func BytesToMessage(data []byte) *pb.MessageType {
-	var m *pb.MessageType = *(**pb.MessageType)(unsafe.Pointer(&data))
+func BytesToMessage(data []byte) *MessageType {
+	var m *MessageType = *(**MessageType)(unsafe.Pointer(&data))
 	return m
 }
 
-func MessageToBytes(message *pb.MessageType) []byte {
+func MessageToBytes(message *MessageType) []byte {
 	length := unsafe.Sizeof(*message)
 	bytes := &Slice{
 		addr: uintptr(unsafe.Pointer(message)),
+		cap:  int(length),
+		len:  int(length),
+	}
+	data := *(*[]byte)(unsafe.Pointer(bytes))
+	return data
+}
+
+func BytesToRequest(data []byte, length int) *Request {
+	var r *Request = *(**Request)(unsafe.Pointer(&data))
+	return r
+}
+
+func RequestToBytes(request *Request) []byte {
+	length := unsafe.Sizeof(*request)
+	bytes := &Slice{
+		addr: uintptr(unsafe.Pointer(request)),
 		cap:  int(length),
 		len:  int(length),
 	}

@@ -1,47 +1,90 @@
 package main
 
 import (
+	"encoding/binary"
 	"fmt"
-	"google.golang.org/grpc"
-	pb "github.com/shelmesky/gms/server/protobuf"
-	"log"
+	"github.com/shelmesky/gms/server/common"
+	"net"
 	"time"
-	"context"
 )
 
 const (
-	address     = "127.0.0.1:50051"
-	defaultName = "world"
+	address = "127.0.0.1:50051"
 )
 
 func main() {
-	conn, err := grpc.Dial(address, grpc.WithInsecure())
+	conn, err := net.Dial("tcp", address)
 	if err != nil {
-		log.Fatalf("did not connect: %v", err)
+		fmt.Println("dial failed:", err)
+		return
 	}
-	defer conn.Close()
 
-	c := pb.NewGMSClient(conn)
+	var request common.Request
+	request.Version = 1001
+	request.Sequence = 1
+	request.MetaDataLength = 6
+	request.BodyLength = 6
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	MetaData := []byte("abcdef")
+	Body := []byte("123456")
 
-	for i:=0; i<1; i++ {
 
-		var message pb.MessageType
-		message.CRC32 = 1234
-		message.Magic = 999
-		message.Attributes = 888
-		message.KeyLength = 3
-		message.KeyPayload = []byte(fmt.Sprintf("%d%d%d", i,i,i))
-		message.ValueLength = 7
-		message.ValuePayload = []byte("1234567")
+	requestLength := common.REQUEST_LEN
 
-		var writeRequest pb.WriteMessageRequest
-		writeRequest.TopicName = "mytopic"
-		writeRequest.Partition = ""
-		writeRequest.Message = append(writeRequest.Message, &message)
-		response, err := c.SendMessage(ctx, &writeRequest)
-		fmt.Println(response, err)
+	MetaDataLen := len(MetaData)
+	BodyLen := len(Body)
+
+	length := requestLength + MetaDataLen + BodyLen
+
+	request.TotalLength = uint64(length)
+	requestBytes := common.RequestToBytes(&request)
+
+	// send total length of whole message
+	totalLenBuf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(totalLenBuf, request.TotalLength)
+	n, err := conn.Write(totalLenBuf)
+	if err != nil {
+		fmt.Println("write failed:", err)
+		return
 	}
+	if n != 8 {
+		fmt.Println("write not satisfied length:", n)
+		return
+	}
+
+	// send request head
+	n, err = conn.Write(requestBytes)
+	if err != nil {
+		fmt.Println("write failed:", err)
+		return
+	}
+	if n != requestLength {
+		fmt.Println("write not satisfied length:", n)
+		return
+	}
+
+
+	// send meta data
+	n, err = conn.Write(MetaData)
+	if err != nil {
+		fmt.Println("write failed:", err)
+		return
+	}
+	if n != MetaDataLen {
+		fmt.Println("write not satisfied length:", n)
+		return
+	}
+
+	// send body
+	n, err = conn.Write(Body)
+	if err != nil {
+		fmt.Println("write failed:", err)
+		return
+	}
+	if n != BodyLen {
+		fmt.Println("write not satisfied length:", n)
+		return
+	}
+
+	time.Sleep(60 * time.Second)
 }

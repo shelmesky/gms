@@ -7,8 +7,6 @@ import (
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
 	"github.com/shelmesky/highwayhash"
-	pb "github.com/shelmesky/gms/server/protobuf"
-	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -27,9 +25,9 @@ func Hash(data []byte) uint64 {
 // 单个partition
 // 将为每个partition启动一个线程
 type Partition struct {
-	dirName string          // 目录名
+	dirName string           // 目录名
 	log     *disklog.DiskLog // 日志管理器
-	queue   chan *pb.MessageType
+	queue   chan *common.MessageType
 }
 
 func (p *Partition) GetLog() *disklog.DiskLog {
@@ -82,7 +80,7 @@ success:
 	return nil
 }
 
-func (partitionList *PartitionList) GetPartition(partitionIndex int) *Partition{
+func (partitionList *PartitionList) GetPartition(partitionIndex int) *Partition {
 	if value, ok := partitionList.partitions[partitionIndex]; ok {
 		return value
 	}
@@ -110,7 +108,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 			}
 
 			partition.log = &log
-			partition.queue = make(chan *pb.MessageType, 1024)
+			partition.queue = make(chan *common.MessageType, 1024)
 			partitionList.partitions[i] = &partition
 		}
 	}
@@ -121,11 +119,12 @@ func (partitionList *PartitionList) Init(topicName string) error {
 	return nil
 }
 
+/*
 // 追加消息到topic
 // topic: 标题名称
 // partition: 分区序号
 // message: 消息内容
-func (partitionList *PartitionList) AppendMessage(partitionIndex string, request *pb.WriteMessageRequest) error {
+func (partitionList *PartitionList) AppendMessage(partitionIndex string, request *common.MessageType) error {
 	var selectedPartition int
 	var err error
 	messagesLength := len(request.Message)
@@ -156,6 +155,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, request
 
 	return nil
 }
+*/
 
 // 发送消息到socket fd
 func (patitionList *PartitionList) SendDataToSock() {
