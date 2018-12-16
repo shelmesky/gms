@@ -5,11 +5,33 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
+	"github.com/shelmesky/gms/server/topics"
+	"github.com/shelmesky/gms/server/utils"
 	"io"
 	"log"
 	"math"
 	"net"
+	"os"
 )
+
+var (
+	topicManager *topics.Topics
+)
+
+func init() {
+	if err := os.Chdir("./data"); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	var t topics.Topics
+	err := t.Init()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	topicManager = &t
+}
 
 type SocketBuffer struct {
 	conn   *net.TCPConn
@@ -137,6 +159,27 @@ func GetAction(metaData []byte) int {
 	return int(action)
 }
 
+func SendMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
+
+	if len(topicName) > 0 {
+		topic := topicManager.GetTopic(topicName)
+
+		if topic != nil {
+			err := topic.AppendMessage(partitionIndex, body, bodyLen)
+			if err != nil {
+				return err
+			}
+			return nil
+
+		} else {
+			return utils.ServerError
+		}
+
+	}
+
+	return utils.ParameterTopicMissed
+}
+
 func HandleConnection(client Client) {
 	for {
 		totalLength, err := client.ReadBuffer.ReadUint64()
@@ -166,6 +209,7 @@ func HandleConnection(client Client) {
 		fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
 		fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
 
+		///////////////////////////////////////////////////////////////////
 		messageHeadStartPos := metaDataEndPos
 		messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
 		messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
@@ -187,6 +231,7 @@ func HandleConnection(client Client) {
 		fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
 		fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
 		fmt.Printf("***********************************************\n\n")
+		///////////////////////////////////////////////////////////////////
 
 		actionNum := GetAction(metaData)
 		if actionNum == common.Write {
@@ -194,6 +239,11 @@ func HandleConnection(client Client) {
 			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
 			fmt.Println(topicName, partitionNum)
+
+			err = SendMessage(topicName, partitionNum, fullMessage, len(fullMessage))
+			if err != nil {
+				fmt.Printf("send message to %s failed: %s\n", topicName, err)
+			}
 		}
 	}
 

@@ -5,7 +5,6 @@ import (
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/partition"
 	"github.com/shelmesky/gms/server/server"
-	"github.com/shelmesky/gms/server/topics"
 	"os"
 	"time"
 )
@@ -14,25 +13,6 @@ const (
 	address = "0.0.0.0"
 	port    = 50051
 )
-
-var (
-	topicManager *topics.Topics
-)
-
-func init() {
-	if err := os.Chdir("./data"); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-
-	var t topics.Topics
-	err := t.Init()
-	if err != nil {
-		panic(err.Error())
-	}
-
-	topicManager = &t
-}
 
 /*
 func SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMessageResponse, error) {

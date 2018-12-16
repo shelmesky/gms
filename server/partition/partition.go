@@ -7,6 +7,7 @@ import (
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
 	"github.com/shelmesky/highwayhash"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -27,7 +28,7 @@ func Hash(data []byte) uint64 {
 type Partition struct {
 	dirName string           // 目录名
 	log     *disklog.DiskLog // 日志管理器
-	queue   chan *common.MessageType
+	queue   chan []byte
 }
 
 func (p *Partition) GetLog() *disklog.DiskLog {
@@ -108,7 +109,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 			}
 
 			partition.log = &log
-			partition.queue = make(chan *common.MessageType, 1024)
+			partition.queue = make(chan []byte, 1024)
 			partitionList.partitions[i] = &partition
 		}
 	}
@@ -119,27 +120,26 @@ func (partitionList *PartitionList) Init(topicName string) error {
 	return nil
 }
 
-/*
 // 追加消息到topic
 // topic: 标题名称
 // partition: 分区序号
 // message: 消息内容
-func (partitionList *PartitionList) AppendMessage(partitionIndex string, request *common.MessageType) error {
+func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []byte, bodyLen int) error {
 	var selectedPartition int
 	var err error
-	messagesLength := len(request.Message)
 
-	for i:=0; i<messagesLength; i++ {
-		message := request.Message[i]
-
+	firstMessage := common.BytesToMessage(body[:common.MESSAGE_LEN])
+	// 如果只有一个消息
+	if firstMessage.Length == uint64(bodyLen) {
 		if len(partitionIndex) > 0 {
 			selectedPartition, err = strconv.Atoi(partitionIndex)
 			if err != nil {
 				return err
 			}
 		} else {
-			if message.KeyLength > 0 {
-				keyHash := uint64(Hash(message.KeyPayload))
+			if firstMessage.KeyLength > 0 {
+				KeyPayload := body[common.MESSAGE_LEN:]
+				keyHash := uint64(Hash(KeyPayload))
 				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 			} else {
 				selectedPartition = rand.Int() % partitionList.numPartitions
@@ -148,14 +148,15 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, request
 
 		if partition, ok := partitionList.partitions[selectedPartition]; ok {
 			if partition != nil {
-				partition.queue <- message
+				partition.queue <- body
 			}
 		}
+	} else if firstMessage.Length < uint64(bodyLen) { // 多个消息
+		
 	}
 
 	return nil
 }
-*/
 
 // 发送消息到socket fd
 func (patitionList *PartitionList) SendDataToSock() {
@@ -167,8 +168,7 @@ func (patitionList *PartitionList) StartWorker() {
 		go func(idx int, partition *Partition) {
 			fmt.Printf("goroutine start for partition: [%s].\n", partition.dirName)
 			for {
-				message := <-partition.queue
-				messageBytes := common.MessageToBytes(message)
+				messageBytes := <-partition.queue
 				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))
 				if err != nil {
 					fmt.Println("append bytes to log failed:", err)
