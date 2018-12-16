@@ -138,7 +138,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 			}
 		} else {
 			if firstMessage.KeyLength > 0 {
-				KeyPayload := body[common.MESSAGE_LEN:]
+				KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessage.KeyLength]
 				keyHash := uint64(Hash(KeyPayload))
 				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 			} else {
@@ -150,9 +150,59 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 			if partition != nil {
 				partition.queue <- body
 			}
+		} else {
+			return utils.PartitionNotExist
 		}
+
 	} else if firstMessage.Length < uint64(bodyLen) { // 多个消息
-		
+		pos := uint64(0)
+		length := uint64(bodyLen)
+		for {
+			// 如果已经读了所有消息
+			if length == 0 {
+				break
+			}
+
+			// 如果剩余的字节数不足一个消息头部
+			if length < common.MESSAGE_LEN {
+				return utils.MessageLengthInvalid
+			}
+
+			messageHeader := common.BytesToMessage(body[pos:common.MESSAGE_LEN])
+
+			// 如果剩余的字节数不足一个完整的消息
+			if length < messageHeader.Length {
+				return utils.MessageLengthInvalid
+			}
+
+			messageBytes := body[pos : pos+messageHeader.Length]
+
+			length -= messageHeader.Length
+			pos += messageHeader.Length
+
+			if len(partitionIndex) > 0 {
+				selectedPartition, err = strconv.Atoi(partitionIndex)
+				if err != nil {
+					return err
+				}
+			} else {
+				if messageHeader.KeyLength > 0 {
+					KeyPayload := messageBytes[common.MESSAGE_LEN : common.MESSAGE_LEN+messageHeader.KeyLength]
+					keyHash := uint64(Hash(KeyPayload))
+					selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
+				} else {
+					selectedPartition = rand.Int() % partitionList.numPartitions
+				}
+			}
+
+			if partition, ok := partitionList.partitions[selectedPartition]; ok {
+				if partition != nil {
+					partition.queue <- body
+				}
+			} else {
+				return utils.PartitionNotExist
+			}
+		}
 	}
 
 	return nil

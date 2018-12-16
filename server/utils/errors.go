@@ -17,4 +17,6 @@ var (
 	FileAlreadyExist         = errors.New("directory or file is already exists")
 	ParameterTopicMissed     = errors.New("parameter topic name was missed")
 	ServerError              = errors.New("server error was occurred")
+	PartitionNotExist        = errors.New("partition num does not exist")
+	MessageLengthInvalid     = errors.New("length of message bytes is invalid")
 )

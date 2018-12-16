@@ -16,6 +16,10 @@ func CRC32(data []byte) {
 
 }
 
+/*
+传入key和value创建消息
+返回消息的bytes和消息的总长度(head+key+value)
+*/
 func NewBody(key, value []byte) ([]byte, uint32) {
 	var message common.MessageType
 	message.CRC32 = 0
@@ -31,7 +35,7 @@ func NewBody(key, value []byte) ([]byte, uint32) {
 
 	messageBytes := common.MessageToBytes(&message)
 
-	return messageBytes, uint32(len(messageBytes))
+	return messageBytes, uint32(message.Length)
 }
 
 func NewWriteMessageMeta(topicName, partitionNum string) ([]byte, uint32) {
@@ -54,8 +58,7 @@ func WriteMessage(topicName, PartitionNum string, bodyKey, bodyValue []byte, con
 	messageHead, request.BodyLength = NewBody(bodyKey, bodyValue)
 
 	requestLength := common.REQUEST_LEN
-	request.TotalLength = uint64(requestLength + int(request.MetaDataLength) +
-		int(request.BodyLength) + len(bodyKey) + len(bodyValue))
+	request.TotalLength = uint64(requestLength + int(request.MetaDataLength) + int(request.BodyLength))
 
 	requestBytes := common.RequestToBytes(&request)
 
