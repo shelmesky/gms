@@ -225,7 +225,7 @@ func HandleConnection(client Client) {
 
 		fmt.Printf("***********************************************\n")
 		fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
-		fmt.Printf("receive [%d] metadata %v\n", len(metaData), metaData)
+		fmt.Printf("receive [%d] metadata %s, %v\n", len(metaData), string(metaData), metaData)
 		fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
 		fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
 		fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
@@ -240,10 +240,12 @@ func HandleConnection(client Client) {
 			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
 			fmt.Println(topicName, partitionNum)
 
-			err = SendMessage(topicName, partitionNum, fullMessage, len(fullMessage))
-			if err != nil {
-				fmt.Printf("send message to %s failed: %s\n", topicName, err)
-			}
+			/*
+				err = SendMessage(topicName, partitionNum, fullMessage, len(fullMessage))
+				if err != nil {
+					fmt.Printf("send message to %s failed: %s\n", topicName, err)
+				}
+			*/
 		}
 	}
 
