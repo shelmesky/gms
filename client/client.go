@@ -80,7 +80,7 @@ func main() {
 	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, partitionNum)
 
 	// 循环增加消息体
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 2; i++ {
 		key := []byte(fmt.Sprintf("key-%d", i))
 		value := []byte(fmt.Sprintf("value-%d", i))
 		totalBodyLength += NewMessage(key, value, &netBufferBody)

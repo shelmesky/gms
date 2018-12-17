@@ -128,17 +128,27 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 	var selectedPartition int
 	var err error
 
-	firstMessage := common.BytesToMessage(body[:common.MESSAGE_LEN])
+	firstMessageHeader := common.BytesToMessage(body[:common.MESSAGE_LEN])
 	// 如果只有一个消息
-	if firstMessage.Length == uint64(bodyLen) {
+	if firstMessageHeader.Length == uint64(bodyLen) {
+
+		KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessageHeader.KeyLength]
+		ValuePayload := body[common.MESSAGE_LEN+firstMessageHeader.KeyLength : common.MESSAGE_LEN+
+			firstMessageHeader.KeyLength+firstMessageHeader.ValueLength]
+		fmt.Println("======================================================")
+		fmt.Printf("body length: %d\n", firstMessageHeader)
+		fmt.Printf("firstMessage: %d %v\n", common.MESSAGE_LEN, firstMessageHeader)
+		fmt.Printf("message key: %d %s, %v\n", len(KeyPayload), string(KeyPayload), KeyPayload)
+		fmt.Printf("message value: %d %s, %v\n", len(ValuePayload), string(ValuePayload), ValuePayload)
+
 		if len(partitionIndex) > 0 {
 			selectedPartition, err = strconv.Atoi(partitionIndex)
 			if err != nil {
 				return err
 			}
 		} else {
-			if firstMessage.KeyLength > 0 {
-				KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessage.KeyLength]
+			if firstMessageHeader.KeyLength > 0 {
+				KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessageHeader.KeyLength]
 				keyHash := uint64(Hash(KeyPayload))
 				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 			} else {
@@ -154,7 +164,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 			return utils.PartitionNotExist
 		}
 
-	} else if firstMessage.Length < uint64(bodyLen) { // 多个消息
+	} else if firstMessageHeader.Length < uint64(bodyLen) { // 多个消息
 		pos := uint64(0)
 		length := uint64(bodyLen)
 		for {
@@ -168,7 +178,18 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 				return utils.MessageLengthInvalid
 			}
 
-			messageHeader := common.BytesToMessage(body[pos:common.MESSAGE_LEN])
+			fmt.Println("length: ", length)
+
+			messageHeader := common.BytesToMessage(body[pos : pos+common.MESSAGE_LEN])
+
+			KeyPayload := body[pos+common.MESSAGE_LEN : pos+common.MESSAGE_LEN+messageHeader.KeyLength]
+			ValuePayload := body[pos+common.MESSAGE_LEN+messageHeader.KeyLength : pos+common.MESSAGE_LEN+
+				messageHeader.KeyLength+messageHeader.ValueLength]
+			fmt.Println("======================================================")
+			fmt.Printf("body length: %d\n", messageHeader.Length)
+			fmt.Printf("messageHeader:%d %v\n", common.MESSAGE_LEN, messageHeader)
+			fmt.Printf("message key: %d %s, %v\n", len(KeyPayload), string(KeyPayload), KeyPayload)
+			fmt.Printf("message value: %d %s, %v\n", len(ValuePayload), string(ValuePayload), ValuePayload)
 
 			// 如果剩余的字节数不足一个完整的消息
 			if length < messageHeader.Length {

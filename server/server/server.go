@@ -61,7 +61,7 @@ func (b *SocketBuffer) ReadFromSocket() int {
 	if err != nil {
 		return 0
 	}
-	fmt.Printf("read from socket: %d bytes\n", n)
+	fmt.Printf("read %d bytes from socket\n", n)
 	b.WriteBytes(buffer[:n], n)
 
 	return n
@@ -97,7 +97,7 @@ func (b *SocketBuffer) ReadBytes(buffer []byte, size int) int {
 }
 
 func (b *SocketBuffer) WriteBytes(buffer []byte, size int) int {
-	fmt.Printf("write bytes: %d bytes\n", len(buffer))
+	fmt.Printf("write %d bytes to ring buffer\n", len(buffer))
 	if size > b.size {
 		return 0
 	}
@@ -160,7 +160,6 @@ func GetAction(metaData []byte) int {
 }
 
 func SendMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
-
 	if len(topicName) > 0 {
 		topic := topicManager.GetTopic(topicName)
 
@@ -209,43 +208,44 @@ func HandleConnection(client Client) {
 		fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
 		fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
 
-		///////////////////////////////////////////////////////////////////
-		messageHeadStartPos := metaDataEndPos
-		messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
-		messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
-		messageHead := common.BytesToMessage(messageHeadBytes)
-
-		messageKeyStartPos := messageHeadEndPos
-		messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
-		messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
-
-		messageValueStartPos := messageKeyEndPos
-		messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
-		messageValue := buffer[messageValueStartPos:messageValueEndPos]
-
-		fmt.Printf("***********************************************\n")
 		fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
 		fmt.Printf("receive [%d] metadata %s, %v\n", len(metaData), string(metaData), metaData)
-		fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
-		fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
-		fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
-		fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
-		fmt.Printf("***********************************************\n\n")
-		///////////////////////////////////////////////////////////////////
+
+		/*
+			///////////////////////////////////////////////////////////////////
+			messageHeadStartPos := metaDataEndPos
+			messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
+			messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
+			messageHead := common.BytesToMessage(messageHeadBytes)
+
+			messageKeyStartPos := messageHeadEndPos
+			messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
+			messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
+
+			messageValueStartPos := messageKeyEndPos
+			messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
+			messageValue := buffer[messageValueStartPos:messageValueEndPos]
+
+			fmt.Printf("***********************************************\n")
+			fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
+			fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
+			fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
+			fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
+			fmt.Printf("***********************************************\n\n")
+			///////////////////////////////////////////////////////////////////
+		*/
 
 		actionNum := GetAction(metaData)
 		if actionNum == common.Write {
 			action := common.BytesToWriteMessageAction(metaData)
 			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
-			fmt.Println(topicName, partitionNum)
 
-			/*
-				err = SendMessage(topicName, partitionNum, fullMessage, len(fullMessage))
-				if err != nil {
-					fmt.Printf("send message to %s failed: %s\n", topicName, err)
-				}
-			*/
+			err = SendMessage(topicName, partitionNum, fullMessage, len(fullMessage))
+			if err != nil {
+				fmt.Printf("send message to %s failed: %s\n", topicName, err)
+			}
+
 		}
 	}
 
