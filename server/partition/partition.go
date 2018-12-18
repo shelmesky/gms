@@ -198,8 +198,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 
 			messageBytes := body[pos : pos+messageHeader.Length]
 
-			length -= messageHeader.Length
-			pos += messageHeader.Length
+
 
 			if len(partitionIndex) > 0 {
 				selectedPartition, err = strconv.Atoi(partitionIndex)
@@ -218,11 +217,14 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 
 			if partition, ok := partitionList.partitions[selectedPartition]; ok {
 				if partition != nil {
-					partition.queue <- body
+					partition.queue <- body[pos : pos+messageHeader.Length]
 				}
 			} else {
 				return utils.PartitionNotExist
 			}
+
+			length -= messageHeader.Length
+			pos += messageHeader.Length
 		}
 	}
 
