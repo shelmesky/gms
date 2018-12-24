@@ -213,13 +213,13 @@ func test_segment() {
 		fmt.Println(err)
 	}
 
-	logSegmentRW, err := disklog.OpenReadWriteLogSegment(filename, capacity)
+	logSegmentRW, err := disklog.OpenReadWriteLogSegment(filename, capacity, true)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(-1)
 	}
 
-	logSegmentRDOnly, err := disklog.OpenRDOnlyLogSegment(filename, capacity)
+	logSegmentRDOnly, err := disklog.OpenRDOnlyLogSegment(filename, capacity, true)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(-1)

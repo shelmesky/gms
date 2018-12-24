@@ -59,7 +59,7 @@ type FileSegment struct {
 	lock          sync.RWMutex // 写入锁
 }
 
-func OpenFileSegment(filename string, flag int, capacity int) (FileSegment, error) {
+func OpenFileSegment(filename string, flag int, capacity int, populate bool) (FileSegment, error) {
 	var logSegment FileSegment
 	var prot int
 
@@ -79,13 +79,18 @@ func OpenFileSegment(filename string, flag int, capacity int) (FileSegment, erro
 		prot = syscall.PROT_READ | syscall.PROT_WRITE
 	}
 
-	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity), prot, syscall.MAP_SHARED)
+	flags := syscall.MAP_FILE | syscall.MAP_SHARED
+	if populate == true {
+		flags |= syscall.MAP_POPULATE
+	}
+
+	logSegment.fileBuffer, err = syscall.Mmap(int(file.Fd()), 0, int(capacity), prot, flags)
 
 	if err != nil {
 		return logSegment, err
 	}
 
-	err = syscall.Madvise(logSegment.fileBuffer, syscall.MADV_SEQUENTIAL)
+	err = syscall.Madvise(logSegment.fileBuffer, syscall.MADV_SEQUENTIAL|syscall.MADV_WILLNEED)
 
 	if err != nil {
 		return logSegment, err
@@ -94,12 +99,12 @@ func OpenFileSegment(filename string, flag int, capacity int) (FileSegment, erro
 	return logSegment, nil
 }
 
-func OpenRDOnlyLogSegment(filename string, capacity int) (FileSegment, error) {
-	return OpenFileSegment(filename, os.O_RDONLY, capacity)
+func OpenRDOnlyLogSegment(filename string, capacity int, populate bool) (FileSegment, error) {
+	return OpenFileSegment(filename, os.O_RDONLY, capacity, populate)
 }
 
-func OpenReadWriteLogSegment(filename string, capacity int) (FileSegment, error) {
-	return OpenFileSegment(filename, os.O_RDWR, capacity)
+func OpenReadWriteLogSegment(filename string, capacity int, populate bool) (FileSegment, error) {
+	return OpenFileSegment(filename, os.O_RDWR, capacity, populate)
 }
 
 func (this *FileSegment) BufferHeader() *reflect.SliceHeader {
@@ -129,7 +134,7 @@ func (this *FileSegment) Close() error {
 	if err != nil {
 		return err
 	}
-	return this.file.Close()
+	return this.File.Close()
 }
 
 func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
@@ -256,19 +261,20 @@ func CreateLogIndexSegmentFile(filename string, logCapacity, indexCapacity int) 
 	return nil
 }
 
-func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, indexCapacity int) error {
+func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity,
+	indexCapacity int, populate bool) error {
 	var err error
 
 	this.lock.Lock()
 	defer this.lock.Unlock()
 
 	if writable {
-		this.Log, err = OpenReadWriteLogSegment(filename+".log", logCapacity)
+		this.Log, err = OpenReadWriteLogSegment(filename+".log", logCapacity, populate)
 		if err != nil {
 			return err
 		}
 
-		this.Index, err = OpenReadWriteLogSegment(filename+".index", indexCapacity)
+		this.Index, err = OpenReadWriteLogSegment(filename+".index", indexCapacity, populate)
 		if err != nil {
 			return err
 		}
@@ -276,12 +282,12 @@ func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity, i
 		this.fileOpened = true
 
 	} else {
-		this.Log, err = OpenRDOnlyLogSegment(filename+".log", logCapacity)
+		this.Log, err = OpenRDOnlyLogSegment(filename+".log", logCapacity, populate)
 		if err != nil {
 			return err
 		}
 
-		this.Index, err = OpenRDOnlyLogSegment(filename+".index", indexCapacity)
+		this.Index, err = OpenRDOnlyLogSegment(filename+".index", indexCapacity, populate)
 		if err != nil {
 			return err
 		}
@@ -761,7 +767,8 @@ func (log *DiskLog) Init(dirName string) error {
 		logFileSize := file.LogFileSize
 
 		var logIndexSegment LogIndexSegment
-		err := logIndexSegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
+		err := logIndexSegment.Open(log.getFullPath(fileBaseName),
+			false, int(logFileSize), int(indexFileSize), false)
 		if err != nil {
 			return fmt.Errorf("open log and index as read only file failed: %s\n", err)
 		}
@@ -774,13 +781,15 @@ func (log *DiskLog) Init(dirName string) error {
 		log.segments = append(log.segments, logIndexSegment)
 	}
 
-	// 打开读写的segment, 作为active segment
+	// 打开读写的segment, 作为active segment.
+	// populate为true, 让内核预先分配好页表(prefault), 并预读文件(readahead).
 	activeFile := fileList[fileList.Len()-1]
 	fileBaseName := activeFile.baseFileName
 	indexFileSize := activeFile.IndexFileSize
 	logFileSize := activeFile.LogFileSize
 	var activeSegment LogIndexSegment
-	err = activeSegment.Open(log.getFullPath(fileBaseName), true, int(logFileSize), int(indexFileSize))
+	err = activeSegment.Open(log.getFullPath(fileBaseName),
+		true, int(logFileSize), int(indexFileSize), true)
 	if err != nil {
 		return fmt.Errorf("open log and index as writable file failed: %s\n", err)
 	}
@@ -818,7 +827,8 @@ func (log *DiskLog) RegenerateActiveSegment() error {
 	indexFileSize := log.activeFile.IndexFileSize
 	logFileSize := log.activeFile.LogFileSize
 
-	err = readOnlySegment.Open(log.getFullPath(fileBaseName), false, int(logFileSize), int(indexFileSize))
+	err = readOnlySegment.Open(log.getFullPath(fileBaseName),
+		false, int(logFileSize), int(indexFileSize), false)
 	if err != nil {
 		return fmt.Errorf("reopen active segment [%s] as read only failed: %s\n",
 			fileBaseName, err.Error())
@@ -838,7 +848,8 @@ func (log *DiskLog) RegenerateActiveSegment() error {
 		return err
 	}
 
-	err = newActiveSegment.Open(log.getFullPath(newFileBaseName), true, newLogFileSize, newIndexFileSize)
+	err = newActiveSegment.Open(log.getFullPath(newFileBaseName),
+		true, newLogFileSize, newIndexFileSize, true)
 	if err != nil {
 		return fmt.Errorf("create new active segment [%s] failed: %s\n",
 			newFileBaseName, err.Error())
@@ -919,7 +930,7 @@ func (log *DiskLog) Search(target int) (int, *LogIndexSegment, int, error) {
 		if result < 0 {
 			return -1, nil, -1, utils.TargetNotFound
 		}
-		return len(log.segments)-1, &log.activeSegment, result, nil
+		return len(log.segments) - 1, &log.activeSegment, result, nil
 	}
 
 	// 在read only的segments中查找
