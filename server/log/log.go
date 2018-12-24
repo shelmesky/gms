@@ -52,7 +52,7 @@ func CreateFile(filename string, capacity int) error {
 type FileSegment struct {
 	filename      string       // 文件名
 	size          int          // 文件大小
-	file          *os.File     // 文件对象
+	File          *os.File     // 文件对象
 	fileBuffer    []byte       // mmap映射的内存区域
 	dataWritten   int          // 已经写入的数据大小
 	dataCommitted int          // 已经提交到持久存储的大小
@@ -70,7 +70,7 @@ func OpenFileSegment(filename string, flag int, capacity int) (FileSegment, erro
 		return logSegment, err
 	}
 
-	logSegment.file = file
+	logSegment.File = file
 	logSegment.size = capacity
 
 	if flag == 0x00 {

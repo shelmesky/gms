@@ -56,14 +56,7 @@ func NewMessage(bodyKey, bodyValue []byte, netBuffer *net.Buffers) uint64 {
 	return bodyLen
 }
 
-func main() {
-	addr := &net.TCPAddr{net.ParseIP("127.0.0."), 50051, ""}
-	conn, err := net.DialTCP("tcp", nil, addr)
-	if err != nil {
-		fmt.Println("dial failed:", err)
-		return
-	}
-
+func WriteMessage(conn *net.TCPConn) {
 	topicName := "mytopic"
 	partitionNum := "0"
 
@@ -105,6 +98,11 @@ func main() {
 
 	// 发送总长度, 请求结构体, metadata
 	n, err := netBufferReq.WriteTo(conn)
+	if err != nil {
+		fmt.Println("netbuffer.WriteTo failed:", err)
+		return
+	}
+
 	if n != int64(requestTotalLen) {
 		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
 		return
@@ -114,10 +112,80 @@ func main() {
 
 	// 发送N个消息
 	n, err = netBufferBody.WriteTo(conn)
+	if err != nil {
+		fmt.Println("netbuffer.WriteTo failed:", err)
+		return
+	}
 	if uint32(n) != requestTotalLen {
 		fmt.Printf("written length [%d] is too small than: [%d]\n", n, totalBodyLength)
 		return
 	} else {
 		fmt.Printf("written %d bytes\n", n)
 	}
+}
+
+func ReadMessage(conn *net.TCPConn) {
+	var request common.Request
+	var metaData []byte
+	var netBuffer net.Buffers
+
+	request.Version = 1001
+	request.Sequence = 2
+
+	topicName := "mytopic"
+	partitionNum := "0"
+	targetOffset := uint32(2)
+	count := uint32(2)
+
+	metaData = common.NewReadMessageAction(topicName, partitionNum, targetOffset, count)
+	metaDataLen := uint32(len(metaData))
+
+	request.MetaDataLength = metaDataLen
+	request.TotalLength = common.REQUEST_LEN + uint64(request.MetaDataLength)
+	request.BodyLength = 0
+
+	requestBytes := common.RequestToBytes(&request)
+
+	totalLengthBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(totalLengthBytes, request.TotalLength)
+
+	netBuffer = append(netBuffer, totalLengthBytes)
+	netBuffer = append(netBuffer, requestBytes)
+	netBuffer = append(netBuffer, metaData)
+
+	requestTotalLen := uint32(0)
+	requestTotalLen = 8 + common.REQUEST_LEN + request.MetaDataLength
+
+	// 发送总长度, 请求结构体, metadata
+	n, err := netBuffer.WriteTo(conn)
+	if n != int64(requestTotalLen) {
+		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
+		return
+	} else {
+		fmt.Printf("written %d bytes\n", n)
+	}
+
+	if err != nil {
+		fmt.Println("netbuffer.WriteTo failed:", err)
+		return
+	}
+
+	if n != int64(requestTotalLen) {
+		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
+		return
+	} else {
+		fmt.Printf("written %d bytes\n", n)
+	}
+}
+
+func main() {
+	addr := &net.TCPAddr{net.ParseIP("127.0.0."), 50051, ""}
+	conn, err := net.DialTCP("tcp", nil, addr)
+	if err != nil {
+		fmt.Println("dial failed:", err)
+		return
+	}
+
+	//WriteMessage(conn)
+	ReadMessage(conn)
 }

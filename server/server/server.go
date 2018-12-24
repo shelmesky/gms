@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
+	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/topics"
 	"github.com/shelmesky/gms/server/utils"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"strconv"
 )
 
 var (
@@ -179,7 +181,122 @@ func SendMessage(topicName, partitionIndex string, body []byte, bodyLen int) err
 	return utils.ParameterTopicMissed
 }
 
-func HandleConnection(client Client) {
+func batchRead(log *disklog.DiskLog, client *Client, target, length int) error {
+	var bytesRead int
+	var originPos int64
+
+	segmentPos, segment, logFilePos, err := log.Search(target)
+	if err != nil {
+		return err
+	}
+
+	if logFilePos < 0 {
+		return fmt.Errorf("cant find offset\n")
+	}
+
+	fmt.Println(logFilePos, err)
+
+	originPos = int64(logFilePos)
+
+	messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
+	if err != nil {
+		return err
+	}
+
+	logFilePos += 8
+	logFilePos += int(messageLength)
+	bytesRead += 8
+	bytesRead += int(messageLength)
+
+	// 减去上面读取的一条记录
+	length -= 1
+
+	readCounter := 0
+	if segmentPos >= 0 && segmentPos <= log.SegmentLength()-1 {
+		for {
+			// 读到足够数量的消息, 退出
+			if readCounter >= length {
+				break
+			}
+
+			// 消息的长度
+			messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
+			if err != nil {
+				return err
+			}
+
+			// 说明读到了log文件末尾
+			// 切换下一个segment并从文件开始处读
+			if messageLength == 0 {
+				// 将当前segment的内容发送到client
+				_, err := segment.Log.File.Seek(originPos, 0)
+				written, err := client.Conn.ReadFrom(io.LimitReader(segment.Log.File, int64(bytesRead)))
+				if written == 0 || err != nil {
+					err = client.Conn.Close()
+					if err != nil {
+						break
+					}
+					break
+				}
+
+				originPos = 0
+				bytesRead = 0
+
+				// 切换到下个segment继续读
+				segmentPos += 1
+				segment, err = log.GetSegment(segmentPos)
+				// 如果返回错误,说明已经读取完所有的segment
+				if err != nil {
+					return err
+				}
+				logFilePos = 0
+				continue
+			}
+
+			logFilePos += 8
+			logFilePos += int(messageLength)
+			bytesRead += 8
+			bytesRead += int(messageLength)
+			readCounter += 1
+		}
+	}
+
+	return nil
+}
+
+func ReadMessage(client *Client, topicName, partitionIndex string, target, count uint32) error {
+	if len(topicName) > 0 {
+		topic := topicManager.GetTopic(topicName)
+
+		if topic != nil {
+			if len(partitionIndex) > 0 { // 提供了partition number
+				partitionNum, err := strconv.Atoi(partitionIndex)
+				if err != nil {
+
+				}
+
+				partition := topic.GetPartition(partitionNum)
+				Log := partition.GetLog()
+				err = batchRead(Log, client, int(target), int(count))
+
+				if err != nil {
+					return err
+				}
+				return nil
+			} else {
+				// TODO: 未提供partition number
+			}
+
+		} else {
+			return utils.ServerError
+		}
+
+	}
+
+	return utils.ParameterTopicMissed
+}
+
+func HandleConnection(client *Client) {
 	for {
 		totalLength, err := client.ReadBuffer.ReadUint64()
 		if err != nil {
@@ -204,39 +321,41 @@ func HandleConnection(client Client) {
 		metaDataEndPos := metaDataStartPos + int(request.MetaDataLength)
 		metaData := buffer[metaDataStartPos:metaDataEndPos]
 
-		fullMessageStartPos := metaDataEndPos
-		fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
-		fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
-
-		fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
-		fmt.Printf("receive [%d] metadata %s, %v\n", len(metaData), string(metaData), metaData)
-
-		/*
-			///////////////////////////////////////////////////////////////////
-			messageHeadStartPos := metaDataEndPos
-			messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
-			messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
-			messageHead := common.BytesToMessage(messageHeadBytes)
-
-			messageKeyStartPos := messageHeadEndPos
-			messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
-			messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
-
-			messageValueStartPos := messageKeyEndPos
-			messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
-			messageValue := buffer[messageValueStartPos:messageValueEndPos]
-
-			fmt.Printf("***********************************************\n")
-			fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
-			fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
-			fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
-			fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
-			fmt.Printf("***********************************************\n\n")
-			///////////////////////////////////////////////////////////////////
-		*/
-
 		actionNum := GetAction(metaData)
+
 		if actionNum == common.Write {
+
+			fullMessageStartPos := metaDataEndPos
+			fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
+			fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
+
+			fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
+			fmt.Printf("receive [%d] metadata %s, %v\n", len(metaData), string(metaData), metaData)
+
+			/*
+				///////////////////////////////////////////////////////////////////
+				messageHeadStartPos := metaDataEndPos
+				messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
+				messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
+				messageHead := common.BytesToMessage(messageHeadBytes)
+
+				messageKeyStartPos := messageHeadEndPos
+				messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
+				messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
+
+				messageValueStartPos := messageKeyEndPos
+				messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
+				messageValue := buffer[messageValueStartPos:messageValueEndPos]
+
+				fmt.Printf("***********************************************\n")
+				fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
+				fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
+				fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
+				fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
+				fmt.Printf("***********************************************\n\n")
+				///////////////////////////////////////////////////////////////////
+			*/
+
 			action := common.BytesToWriteMessageAction(metaData)
 			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
@@ -245,7 +364,18 @@ func HandleConnection(client Client) {
 			if err != nil {
 				fmt.Printf("send message to %s failed: %s\n", topicName, err)
 			}
+		}
 
+		if actionNum == common.Read {
+			action := common.BytesToReadMessageAction(metaData)
+			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
+			targetOffset := action.TargetOffset
+			count := action.Count
+			err = ReadMessage(client, topicName, partitionNum, targetOffset, count)
+			if err != nil {
+				fmt.Printf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
+			}
 		}
 	}
 
@@ -267,7 +397,7 @@ func StartServer(listener *net.TCPListener) {
 		client := NewClient(conn)
 		client.SockFD = int(sockFile.Fd())
 
-		go HandleConnection(client)
+		go HandleConnection(&client)
 	}
 }
 

@@ -19,6 +19,7 @@ const (
 )
 
 // 保存在meta中, 作为处理body的辅助信息
+// 客户端消息写入命令
 type WriteMessageAction struct {
 	Action          uint32
 	TopicName       [128]byte
@@ -59,6 +60,55 @@ func NewWriteMessageAction(topicName, PartitionNumber string) []byte {
 		writeMessageAction.PartitionNumber[i] = PartitionNumber[i]
 	}
 	return WriteMessageActionToBytes(&writeMessageAction)
+}
+
+// 客户端读取消息命令
+type ReadMessageAction struct {
+	Action          uint32
+	TopicName       [128]byte
+	PartitionNumber [32]byte
+	TargetOffset    uint32
+	Count           uint32
+}
+
+func BytesToReadMessageAction(data []byte) *ReadMessageAction {
+	var act *ReadMessageAction = *(**ReadMessageAction)(unsafe.Pointer(&data))
+	return act
+}
+
+func ReadMessageActionToBytes(action *ReadMessageAction) []byte {
+	length := unsafe.Sizeof(*action)
+	b := &Slice{
+		addr: uintptr(unsafe.Pointer(action)),
+		cap:  int(length),
+		len:  int(length),
+	}
+	data := *(*[]byte)(unsafe.Pointer(b))
+	return data
+}
+
+func NewReadMessageAction(topicName, PartitionNumber string, targetOffset, count uint32) []byte {
+	var readMessageAction ReadMessageAction
+	readMessageAction.Action = Read
+
+	if len(topicName) > TOPIC_NAME_LEN {
+		panic("topic name is too large")
+	}
+	for i := 0; i < len(topicName); i++ {
+		readMessageAction.TopicName[i] = topicName[i]
+	}
+
+	if len(PartitionNumber) > PARTITION_NUM_LEN {
+		panic("partition mum is too large")
+	}
+	for i := 0; i < len(PartitionNumber); i++ {
+		readMessageAction.PartitionNumber[i] = PartitionNumber[i]
+	}
+
+	readMessageAction.TargetOffset = targetOffset
+	readMessageAction.Count = count
+
+	return ReadMessageActionToBytes(&readMessageAction)
 }
 
 // 每个消息都有的请求头部
