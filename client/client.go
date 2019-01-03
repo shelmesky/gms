@@ -179,7 +179,7 @@ func ReadMessage(conn *net.TCPConn) {
 }
 
 func main() {
-	addr := &net.TCPAddr{net.ParseIP("127.0.0."), 50051, ""}
+	addr := &net.TCPAddr{net.ParseIP("127.0.0.1"), 50051, ""}
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		fmt.Println("dial failed:", err)
