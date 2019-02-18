@@ -113,11 +113,11 @@ func NewReadMessageAction(topicName, PartitionNumber string, targetOffset, count
 
 // 每个消息都有的请求头部
 type Request struct {
-	TotalLength    uint64
-	Version        uint16
-	Sequence       uint32
-	MetaDataLength uint32
-	BodyLength     uint32
+	TotalLength    uint64 // 消息的总长度
+	Version        uint16 // 版本号
+	Sequence       uint32 // 序列号
+	MetaDataLength uint32 // 元数据
+	BodyLength     uint32 // 消息主题长度
 }
 
 // 当Request.BodyLength 不等于 MessageType.Length
@@ -125,12 +125,12 @@ type Request struct {
 
 // 写入到磁盘的消息结构
 type MessageType struct {
-	Length      uint64
-	CRC32       uint32
-	Magic       uint32
-	Attributes  uint32
-	KeyLength   uint64
-	ValueLength uint64
+	Length      uint64 // 消息长度
+	CRC32       uint32 // CRC32
+	Magic       uint32 // 魔法数字
+	Attributes  uint32 // 属性
+	KeyLength   uint64 // KEY的长度
+	ValueLength uint64 // VALUE的长度
 }
 
 type Slice struct {
