@@ -124,7 +124,7 @@ type Request struct {
 // 说明消息是批量发送的
 
 // 写入到磁盘的消息结构
-type MessageType struct {
+type WriteMessageType struct {
 	Length      uint64 // 消息长度
 	CRC32       uint32 // CRC32
 	Magic       uint32 // 魔法数字
@@ -139,12 +139,12 @@ type Slice struct {
 	cap  int
 }
 
-func BytesToMessage(data []byte) *MessageType {
-	var m *MessageType = *(**MessageType)(unsafe.Pointer(&data))
+func BytesToMessage(data []byte) *WriteMessageType {
+	var m *WriteMessageType = *(**WriteMessageType)(unsafe.Pointer(&data))
 	return m
 }
 
-func MessageToBytes(message *MessageType) []byte {
+func MessageToBytes(message *WriteMessageType) []byte {
 	length := unsafe.Sizeof(*message)
 	bytes := &Slice{
 		addr: uintptr(unsafe.Pointer(message)),

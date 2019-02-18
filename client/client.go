@@ -20,7 +20,7 @@ func CRC32(data []byte) {
 返回消息的bytes和消息的总长度(head+key+value)
 */
 func NewBody(key, value []byte) ([]byte, uint64) {
-	var message common.MessageType
+	var message common.WriteMessageType
 	message.CRC32 = 0
 	message.Magic = 0
 	message.Attributes = 0
