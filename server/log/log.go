@@ -930,7 +930,8 @@ func (log *DiskLog) Search(target int) (int, *LogIndexSegment, int, error) {
 		if result < 0 {
 			return -1, nil, -1, utils.TargetNotFound
 		}
-		return len(log.segments) - 1, &log.activeSegment, result, nil
+		filePos := log.activeSegment.GetIndexEntryValue(result)
+		return len(log.segments) - 1, &log.activeSegment, int(filePos), nil
 	}
 
 	// 在read only的segments中查找

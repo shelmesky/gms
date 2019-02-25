@@ -120,21 +120,26 @@ func (partitionList *PartitionList) Init(topicName string) error {
 	return nil
 }
 
-// 追加消息到topic
-// topic: 标题名称
-// partition: 分区序号
-// message: 消息内容
+/*
+追加消息到topic
+partitionIndex: 分区对应的序号
+body: 消息体本身
+bodyLen: 消息体长度
+ */
 func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []byte, bodyLen int) error {
 	var selectedPartition int
 	var err error
 
+	// 获取第一个消息的头部
 	firstMessageHeader := common.BytesToMessage(body[:common.MESSAGE_LEN])
+
 	// 如果只有一个消息
 	if firstMessageHeader.Length == uint64(bodyLen) {
 
 		KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessageHeader.KeyLength]
 		ValuePayload := body[common.MESSAGE_LEN+firstMessageHeader.KeyLength : common.MESSAGE_LEN+
 			firstMessageHeader.KeyLength+firstMessageHeader.ValueLength]
+
 		fmt.Println("======================================================")
 		fmt.Printf("body length: %d\n", firstMessageHeader)
 		fmt.Printf("firstMessage: %d %v\n", common.MESSAGE_LEN, firstMessageHeader)

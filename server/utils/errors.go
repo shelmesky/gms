@@ -19,4 +19,5 @@ var (
 	ServerError              = errors.New("server error was occurred")
 	PartitionNotExist        = errors.New("partition num does not exist")
 	MessageLengthInvalid     = errors.New("length of message bytes is invalid")
+	CloseConnError           = errors.New("close client connection failed")
 )

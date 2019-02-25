@@ -43,10 +43,16 @@ func SendMessage(ctx context.Context, in *pb.WriteMessageRequest) (*pb.WriteMess
 */
 
 func main() {
+	//test1()
 	server.Run(address, port)
 }
 
 func test1() {
+
+	if err := os.Chdir("./data"); err != nil {
+		fmt.Println("can not change to directory './data'")
+		return
+	}
 
 	fmt.Println(partition.CreatePartitionList("mytopic", 3))
 

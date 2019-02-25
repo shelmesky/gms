@@ -21,9 +21,9 @@ func CRC32(data []byte) {
 */
 func NewBody(key, value []byte) ([]byte, uint64) {
 	var message common.WriteMessageType
-	message.CRC32 = 0
-	message.Magic = 0
-	message.Attributes = 0
+	message.CRC32 = 99
+	message.Magic = 98
+	message.Attributes = 97
 	message.KeyLength = uint64(len(key))
 	message.ValueLength = uint64(len(value))
 
@@ -134,8 +134,8 @@ func ReadMessage(conn *net.TCPConn) {
 
 	topicName := "mytopic"
 	partitionNum := "0"
-	targetOffset := uint32(2)
-	count := uint32(2)
+	targetOffset := uint32(1)
+	count := uint32(7)
 
 	metaData = common.NewReadMessageAction(topicName, partitionNum, targetOffset, count)
 	metaDataLen := uint32(len(metaData))
@@ -175,6 +175,42 @@ func ReadMessage(conn *net.TCPConn) {
 		return
 	} else {
 		fmt.Printf("written %d bytes\n", n)
+	}
+
+	for {
+		offsetBuf := make([]byte, 4)
+		lengthBuf := make([]byte, 4)
+
+		readN, err := conn.Read(offsetBuf)
+		if readN == 0 || err != nil {
+			break
+		}
+
+		offset := binary.LittleEndian.Uint32(offsetBuf)
+
+		readN, err = conn.Read(lengthBuf)
+		if readN == 0 || err != nil {
+			break
+		}
+
+		length := binary.LittleEndian.Uint32(lengthBuf)
+
+		fmt.Printf("offset: %d, length: %d\n", offset, length)
+
+		bodyBuf := make([]byte, length)
+
+		readN, err = conn.Read(bodyBuf)
+		if readN == 0 || err != nil {
+			break
+		}
+
+		body := common.BytesToMessage(bodyBuf)
+		fmt.Println("body: ", body)
+
+		key := bodyBuf[common.MESSAGE_LEN : common.MESSAGE_LEN+body.KeyLength]
+		value := bodyBuf[common.MESSAGE_LEN+body.KeyLength : common.MESSAGE_LEN+body.KeyLength+body.ValueLength]
+		fmt.Println("key: ", string(key))
+		fmt.Println("value: ", string(value))
 	}
 }
 
