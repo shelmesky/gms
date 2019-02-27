@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	maxPartitionNums = 99
+	maxPartitionNums = 99 // 初始化时最多读取此数量的分区
 	KeyString        = "010102030405060807090A0B0C0D0E0FF0E0D0C0B0A090807060504030901000"
 )
 
@@ -125,24 +125,24 @@ func (partitionList *PartitionList) Init(topicName string) error {
 partitionIndex: 分区对应的序号
 body: 消息体本身
 bodyLen: 消息体长度
- */
+*/
 func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []byte, bodyLen int) error {
 	var selectedPartition int
 	var err error
 
 	// 获取第一个消息的头部
-	firstMessageHeader := common.BytesToMessage(body[:common.MESSAGE_LEN])
+	firstMessageHeader := common.BytesToMessage(body[:common.WRITE_MESSAGE_LEN])
 
 	// 如果只有一个消息
 	if firstMessageHeader.Length == uint64(bodyLen) {
 
-		KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessageHeader.KeyLength]
-		ValuePayload := body[common.MESSAGE_LEN+firstMessageHeader.KeyLength : common.MESSAGE_LEN+
+		KeyPayload := body[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+firstMessageHeader.KeyLength]
+		ValuePayload := body[common.WRITE_MESSAGE_LEN+firstMessageHeader.KeyLength : common.WRITE_MESSAGE_LEN+
 			firstMessageHeader.KeyLength+firstMessageHeader.ValueLength]
 
 		fmt.Println("======================================================")
 		fmt.Printf("body length: %d\n", firstMessageHeader)
-		fmt.Printf("firstMessage: %d %v\n", common.MESSAGE_LEN, firstMessageHeader)
+		fmt.Printf("firstMessage: %d %v\n", common.WRITE_MESSAGE_LEN, firstMessageHeader)
 		fmt.Printf("message key: %d %s, %v\n", len(KeyPayload), string(KeyPayload), KeyPayload)
 		fmt.Printf("message value: %d %s, %v\n", len(ValuePayload), string(ValuePayload), ValuePayload)
 
@@ -153,7 +153,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 			}
 		} else {
 			if firstMessageHeader.KeyLength > 0 {
-				KeyPayload := body[common.MESSAGE_LEN : common.MESSAGE_LEN+firstMessageHeader.KeyLength]
+				KeyPayload := body[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+firstMessageHeader.KeyLength]
 				keyHash := uint64(Hash(KeyPayload))
 				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 			} else {
@@ -179,20 +179,20 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 			}
 
 			// 如果剩余的字节数不足一个消息头部
-			if length < common.MESSAGE_LEN {
+			if length < common.WRITE_MESSAGE_LEN {
 				return utils.MessageLengthInvalid
 			}
 
 			fmt.Println("length: ", length)
 
-			messageHeader := common.BytesToMessage(body[pos : pos+common.MESSAGE_LEN])
+			messageHeader := common.BytesToMessage(body[pos : pos+common.WRITE_MESSAGE_LEN])
 
-			KeyPayload := body[pos+common.MESSAGE_LEN : pos+common.MESSAGE_LEN+messageHeader.KeyLength]
-			ValuePayload := body[pos+common.MESSAGE_LEN+messageHeader.KeyLength : pos+common.MESSAGE_LEN+
+			KeyPayload := body[pos+common.WRITE_MESSAGE_LEN : pos+common.WRITE_MESSAGE_LEN+messageHeader.KeyLength]
+			ValuePayload := body[pos+common.WRITE_MESSAGE_LEN+messageHeader.KeyLength : pos+common.WRITE_MESSAGE_LEN+
 				messageHeader.KeyLength+messageHeader.ValueLength]
 			fmt.Println("======================================================")
 			fmt.Printf("body length: %d\n", messageHeader.Length)
-			fmt.Printf("messageHeader:%d %v\n", common.MESSAGE_LEN, messageHeader)
+			fmt.Printf("messageHeader:%d %v\n", common.WRITE_MESSAGE_LEN, messageHeader)
 			fmt.Printf("message key: %d %s, %v\n", len(KeyPayload), string(KeyPayload), KeyPayload)
 			fmt.Printf("message value: %d %s, %v\n", len(ValuePayload), string(ValuePayload), ValuePayload)
 
@@ -203,8 +203,6 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 
 			messageBytes := body[pos : pos+messageHeader.Length]
 
-
-
 			if len(partitionIndex) > 0 {
 				selectedPartition, err = strconv.Atoi(partitionIndex)
 				if err != nil {
@@ -212,7 +210,7 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 				}
 			} else {
 				if messageHeader.KeyLength > 0 {
-					KeyPayload := messageBytes[common.MESSAGE_LEN : common.MESSAGE_LEN+messageHeader.KeyLength]
+					KeyPayload := messageBytes[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+messageHeader.KeyLength]
 					keyHash := uint64(Hash(KeyPayload))
 					selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 				} else {

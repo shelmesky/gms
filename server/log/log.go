@@ -18,12 +18,12 @@ import (
 )
 
 const (
-	MessageOffsetAndSizeField = 8
-	IndexEntrySize            = 8
-	IndexFileSize             = 1024 * 1024 * 1
-	LogFileSize               = 1024 * 1024 * 2
-	EntriesPerFile            = 10
-	FileNameLength            = 19
+	MessageOffsetAndSizeField = 8               // 存储在log文件中每个消息之前的两个字段大小
+	IndexEntrySize            = 8               // index文件中每个数据项的大小
+	IndexFileSize             = 1024 * 1024 * 1 // index文件大小
+	LogFileSize               = 1024 * 1024 * 2 // log文件大小
+	EntriesPerFile            = 10              // 每个log文件中保存多少条记录
+	FileNameLength            = 19              // log和index文件名的长度
 )
 
 func CreateFile(filename string, capacity int) error {

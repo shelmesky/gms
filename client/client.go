@@ -27,7 +27,7 @@ func NewBody(key, value []byte) ([]byte, uint64) {
 	message.KeyLength = uint64(len(key))
 	message.ValueLength = uint64(len(value))
 
-	messageBytesLen := common.MESSAGE_LEN
+	messageBytesLen := common.WRITE_MESSAGE_LEN
 
 	messageTotalLength := messageBytesLen + int(message.KeyLength) + int(message.ValueLength)
 	message.Length = uint64(messageTotalLength)
@@ -207,8 +207,8 @@ func ReadMessage(conn *net.TCPConn) {
 		body := common.BytesToMessage(bodyBuf)
 		fmt.Println("body: ", body)
 
-		key := bodyBuf[common.MESSAGE_LEN : common.MESSAGE_LEN+body.KeyLength]
-		value := bodyBuf[common.MESSAGE_LEN+body.KeyLength : common.MESSAGE_LEN+body.KeyLength+body.ValueLength]
+		key := bodyBuf[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+body.KeyLength]
+		value := bodyBuf[common.WRITE_MESSAGE_LEN+body.KeyLength : common.WRITE_MESSAGE_LEN+body.KeyLength+body.ValueLength]
 		fmt.Println("key: ", string(key))
 		fmt.Println("value: ", string(value))
 	}

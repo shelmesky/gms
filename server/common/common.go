@@ -5,12 +5,12 @@ import (
 )
 
 const (
-	REQUEST_LEN       = 24
-	MESSAGE_LEN       = 40
-	READ_BUF_SIZE     = 4096
-	WRITE_BUF_SIZE    = 4096
-	TOPIC_NAME_LEN    = 128
-	PARTITION_NUM_LEN = 128
+	REQUEST_LEN       = 24   // Request结构的长度
+	WRITE_MESSAGE_LEN = 40   // 写入型消息的头部长度
+	READ_BUF_SIZE     = 4096 // RingBuffer读取缓冲区大小
+	WRITE_BUF_SIZE    = 4096 // RingBuffer写入缓冲区大小
+	TOPIC_NAME_LEN    = 128  // topic名字允许的最大长度
+	PARTITION_NUM_LEN = 128  // partition分区号允许的最大长度
 )
 
 const (
