@@ -5,7 +5,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
+	"github.com/shelmesky/gms/server/controller"
 	"github.com/shelmesky/gms/server/log"
+	"github.com/shelmesky/gms/server/node"
 	"github.com/shelmesky/gms/server/topics"
 	"github.com/shelmesky/gms/server/utils"
 	"io"
@@ -478,5 +480,18 @@ func Run(address string, port int) {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	StartController()
+	StartNode()
 	StartServer(listen)
+}
+
+func StartController() {
+	controller.Start()
+}
+
+func StartNode() {
+	_, err := node.Start()
+	if err != nil {
+		log.Fatal("start node failed:", err)
+	}
 }
