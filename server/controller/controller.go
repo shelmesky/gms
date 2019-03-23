@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
 	log "github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	etcd "go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/clientv3/concurrency"
 	"os"
@@ -14,7 +15,7 @@ import (
 
 var (
 	electionName     = "/controller-election"
-	candidateName    = "node1"
+	candidateName    = common.GlobalConfig.NodeID
 	resumeLeader     = true
 	TTL              = 10
 	reconnectBackOff = time.Second * 2
@@ -43,9 +44,34 @@ func Start() {
 		os.Exit(1)
 	}
 
+	// 处理controller发生变化
 	go HandleLeaderChange(leaderChan)
 
+	go WatchBrokers()
+	go WatchTopics()
+
 	//cancel()
+}
+
+// 监听/brokers/id/目录的变化并处理，例如新增或删除
+func WatchBrokers() {
+	watcher := clientv3.NewWatcher(client)
+	watchChan := watcher.Watch(context.Background(), "/brokers/ids/", clientv3.WithPrefix())
+	for wresp := range watchChan {
+		for _, ev := range wresp.Events {
+			switch ev.Type {
+			case clientv3.EventTypePut:
+				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+			case clientv3.EventTypeDelete:
+				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+			}
+		}
+	}
+}
+
+// 监听/topics/目录并处理，例如新增或删除
+func WatchTopics() {
+
 }
 
 func HandleLeaderChange(leaderChan <-chan bool) {

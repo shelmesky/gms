@@ -13,7 +13,7 @@ import (
 var (
 	listenAddress = flag.String("address", "127.0.0.1", "listen address")
 	listenPort    = flag.Int("port", 50051, "listen port")
-	nodeID        = flag.String("node ID", "node-1", "ID of current node")
+	nodeID        = flag.String("node-id", "node-1", "ID of current node")
 	dataDir       = flag.String("data-dir", "./data", "local data dir")
 	etcdServer    = flag.String("etcd-server", "127.0.0.1:2379", "etcd server")
 )

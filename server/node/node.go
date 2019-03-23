@@ -32,7 +32,7 @@ func Start() (chan struct{}, error) {
 		return stopChan, errors.Wrap(err, "lease grant failed")
 	}
 
-	key := fmt.Sprintf("/brokers/id/%s", common.GlobalConfig.NodeID)
+	key := fmt.Sprintf("/brokers/ids/%s", common.GlobalConfig.NodeID)
 	value := common.GlobalConfig.NodeID
 	putResp, err := kv.Put(context.TODO(), key, value, clientv3.WithLease(leaseResp.ID))
 	if err != nil {
