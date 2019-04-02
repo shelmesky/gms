@@ -2,13 +2,18 @@ package main
 
 import (
 	"encoding/binary"
+	"flag"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
+	"github.com/sirupsen/logrus"
 	"net"
+	"os"
 )
 
-const (
-	address = "127.0.0.1:50051"
+var (
+	action        = flag.String("action", "", "action need to do, default is empty")
+	serverAddress = flag.String("address", "127.0.0.1", "ip address of server")
+	serverPort    = flag.Int("port", 50051, "tcp port of server")
 )
 
 func CRC32(data []byte) {
@@ -124,18 +129,67 @@ func WriteMessage(conn *net.TCPConn) {
 	}
 }
 
-func ReadMessage(conn *net.TCPConn) {
+func NewRequest(metaData, bodyData []byte) (net.Buffers, uint64) {
+	var request common.Request
+	var netBuffer net.Buffers
+
+	// 设置request的版本号和请求序号
+	request.Version = 1001
+	request.Sequence = 2
+
+	metaDataLength := len(metaData)
+	bodyLength := len(bodyData)
+
+	// 设置request中的各种长度属性
+	request.BodyLength = uint32(bodyLength)                                                    // body数据长度
+	request.MetaDataLength = uint32(metaDataLength)                                            // meta数据长度
+	request.TotalLength = 8 + common.REQUEST_LEN + uint64(metaDataLength) + uint64(bodyLength) // 总长度
+
+	// 将request结构体转换为[]byte
+	requestBytes := common.RequestToBytes(&request)
+
+	// 写入总长度到一个8字节的数组中
+	totalLengthBytes := make([]byte, 8)
+	binary.LittleEndian.PutUint64(totalLengthBytes, request.TotalLength)
+
+	// 想net.Buffers中追加字节数组
+	netBuffer = append(netBuffer, totalLengthBytes) // 数据包总长度数据
+	netBuffer = append(netBuffer, requestBytes)     // request结构数据
+	netBuffer = append(netBuffer, metaData)         // meta结构数据
+	if bodyLength > 0 {
+		netBuffer = append(netBuffer, bodyData) // body数据
+	}
+
+	// 返回net.Buffers和总长度
+	return netBuffer, request.TotalLength
+}
+
+func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32) {
+	//meta data
+	metaData := common.NewCreateTopicAction(topicName, partitionCount, replicaCount)
+	// body data
+	bodyData := []byte{}
+
+	// generate request
+	netBuffer, totalLength := NewRequest(metaData, bodyData)
+
+	// send data use writev syscall
+	n, err := netBuffer.WriteTo(conn)
+	if uint64(n) != totalLength || err != nil {
+		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
+		if err = conn.Close(); err != nil {
+			logrus.Println("close socket failed:", err)
+		}
+	}
+}
+
+func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset, count uint32) {
 	var request common.Request
 	var metaData []byte
 	var netBuffer net.Buffers
 
 	request.Version = 1001
 	request.Sequence = 2
-
-	topicName := "mytopic"
-	partitionNum := "0"
-	targetOffset := uint32(1)
-	count := uint32(7)
 
 	metaData = common.NewReadMessageAction(topicName, partitionNum, targetOffset, count)
 	metaDataLen := uint32(len(metaData))
@@ -215,13 +269,28 @@ func ReadMessage(conn *net.TCPConn) {
 }
 
 func main() {
-	addr := &net.TCPAddr{net.ParseIP("127.0.0.1"), 50051, ""}
+	flag.Parse()
+
+	addr := &net.TCPAddr{net.ParseIP(*serverAddress), *serverPort, ""}
 	conn, err := net.DialTCP("tcp", nil, addr)
 	if err != nil {
 		fmt.Println("dial failed:", err)
 		return
 	}
 
-	//WriteMessage(conn)
-	ReadMessage(conn)
+	if *action == "" {
+		fmt.Println("please specify action!")
+		os.Exit(1)
+	}
+
+	if *action == "write" {
+		WriteMessage(conn)
+	} else if *action == "read" {
+		ReadMessage(conn, "mytopic", "0", 1, 5)
+	} else if *action == "createTopic" {
+		CreateTopic(conn, "mytopic", 3, 3)
+	} else {
+		fmt.Println("action is not support!")
+		os.Exit(1)
+	}
 }

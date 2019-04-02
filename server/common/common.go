@@ -14,8 +14,9 @@ const (
 )
 
 const (
-	Write = 1 // 写入类消息
-	Read  = 2 // 读取类消息
+	Write       = 1 // 写入类消息
+	Read        = 2 // 读取类消息
+	CreateTopic = 3 // 创建topic
 )
 
 // 保存在meta中, 作为处理body的辅助信息
@@ -109,6 +110,47 @@ func NewReadMessageAction(topicName, PartitionNumber string, targetOffset, count
 	readMessageAction.Count = count
 
 	return ReadMessageActionToBytes(&readMessageAction)
+}
+
+// 创建topic请求
+type CreateTopicAction struct {
+	Action         uint32
+	TopicName      [128]byte
+	PartitionCount uint32
+	ReplicaCount   uint32
+}
+
+func BytesToCreateTopicAction(data []byte) *CreateTopicAction {
+	var act *CreateTopicAction = *(**CreateTopicAction)(unsafe.Pointer(&data))
+	return act
+}
+
+func CreateTopicActionToBytes(action *CreateTopicAction) []byte {
+	length := unsafe.Sizeof(*action)
+	b := &Slice{
+		addr: uintptr(unsafe.Pointer(action)),
+		cap:  int(length),
+		len:  int(length),
+	}
+	data := *(*[]byte)(unsafe.Pointer(b))
+	return data
+}
+
+func NewCreateTopicAction(topicName string, PartitionCount, ReplicaCount uint32) []byte {
+	var action CreateTopicAction
+	action.Action = CreateTopic
+
+	if len(topicName) > TOPIC_NAME_LEN {
+		panic("topic name is too large")
+	}
+	for i := 0; i < len(topicName); i++ {
+		action.TopicName[i] = topicName[i]
+	}
+
+	action.PartitionCount = PartitionCount
+	action.ReplicaCount = ReplicaCount
+
+	return CreateTopicActionToBytes(&action)
 }
 
 // 每个消息都有的请求头部
