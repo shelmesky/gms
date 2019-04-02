@@ -15,7 +15,6 @@ import (
 
 var (
 	electionName     = "/controller-election"
-	candidateName    = common.GlobalConfig.NodeID
 	resumeLeader     = true
 	TTL              = 10
 	reconnectBackOff = time.Second * 2
@@ -123,7 +122,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 				//    session has expired during the observation loop.
 				// 2. Resign the leadership immediately to allow a new leader to be chosen.
 				//    This option will almost always result in transfer of leadership.
-				if string(node.Kvs[0].Value) == candidateName { //如果leader是自身
+				if string(node.Kvs[0].Value) == common.GlobalConfig.NodeID { //如果leader是自身
 					// If we want to resume leadership
 					if resumeLeader { // 如果打开了恢复leader的开关
 						// Recreate our session with the old lease id
@@ -161,7 +160,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 			errChan = make(chan error)
 			go func() {
 				// Make this a non blocking call so we can check for session close
-				errChan <- election.Campaign(ctx, candidateName)
+				errChan <- election.Campaign(ctx, common.GlobalConfig.NodeID)
 			}()
 
 			select {
@@ -199,7 +198,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 						session.Close()
 						goto reconnect
 					}
-					if string(resp.Kvs[0].Value) == candidateName {
+					if string(resp.Kvs[0].Value) == common.GlobalConfig.NodeID {
 						setLeader(true)
 					} else {
 						// We are not leader
@@ -258,7 +257,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 			continue
 		}
 		// If we are not leader, notify the channel
-		if string(resp.Kvs[0].Value) != candidateName {
+		if string(resp.Kvs[0].Value) != common.GlobalConfig.NodeID {
 			leaderChan <- false
 		}
 		break
