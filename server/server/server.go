@@ -22,7 +22,7 @@ var (
 	topicManager *topics.Topics
 )
 
-func init() {
+func Init() {
 	if err := os.Chdir("./data"); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -480,9 +480,11 @@ func Run(address string, port int) {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	StartController()
-	StartNode()
-	StartServer(listen)
+	StartNode()       // 注册节点
+	StartController() // 注册控制器
+
+	Init()              // 初始化数据目录
+	StartServer(listen) // 启动服务
 }
 
 func StartController() {
@@ -492,6 +494,7 @@ func StartController() {
 func StartNode() {
 	_, err := node.Start()
 	if err != nil {
-		log.Fatal("start node failed:", err)
+		fmt.Println("start node failed:", err)
+		os.Exit(1)
 	}
 }

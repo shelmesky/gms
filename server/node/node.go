@@ -29,7 +29,7 @@ func Start() (chan struct{}, error) {
 	})
 
 	if err != nil {
-		return stopChan, errors.Wrap(err, "connect to kv server failed")
+		return stopChan, fmt.Errorf("%s: connect to kv server failed\n", err)
 	}
 
 	kv := clientv3.NewKV(client)
@@ -38,14 +38,24 @@ func Start() (chan struct{}, error) {
 
 	leaseResp, err := lease.Grant(context.TODO(), 5)
 	if err != nil {
-		return stopChan, errors.Wrap(err, "lease grant failed")
+		return stopChan, fmt.Errorf("lease grant failed\n")
 	}
 
 	key := fmt.Sprintf("/brokers/ids/%s", common.GlobalConfig.NodeID)
+
+	getResp, err := kv.Get(context.TODO(), key)
+	if err != nil {
+		return stopChan, fmt.Errorf("%s: get %s from etcd failed\n", err, key)
+	}
+
+	if len(getResp.Kvs) > 0 {
+		return stopChan, fmt.Errorf("key %s already exits!\n", key)
+	}
+
 	value := getNodeInfo()
 	putResp, err := kv.Put(context.TODO(), key, value, clientv3.WithLease(leaseResp.ID))
 	if err != nil {
-		return stopChan, errors.Wrap(err, "kv put failed")
+		return stopChan, fmt.Errorf("%s: kv put failed\n", err)
 	}
 	log.Println("set brokers info", putResp)
 
