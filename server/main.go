@@ -11,11 +11,12 @@ import (
 )
 
 var (
-	listenAddress = flag.String("address", "127.0.0.1", "listen address")
+	listenAddress = flag.String("address", "0.0.0.0", "listen address")
 	listenPort    = flag.Int("port", 50051, "listen port")
 	nodeID        = flag.String("node-id", "node-1", "ID of current node")
 	dataDir       = flag.String("data-dir", "./data", "local data dir")
 	etcdServer    = flag.String("etcd-server", "127.0.0.1:2379", "etcd server")
+	ipAddress     = flag.String("ipaddress", "127.0.0.1", "ip address for communication")
 )
 
 func main() {
@@ -43,4 +44,5 @@ func Init() {
 	common.GlobalConfig.NodeID = *nodeID
 	common.GlobalConfig.DataDir = *dataDir
 	common.GlobalConfig.EtcdServer = *etcdServer
+	common.GlobalConfig.IPAddress = *ipAddress
 }

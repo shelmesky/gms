@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
@@ -9,6 +10,14 @@ import (
 	"log"
 	"time"
 )
+
+// 保存在etcd中的Node信息
+type Node struct {
+	IPAddress string `json:"ip_address"`
+	Port      int    `json:"port"`
+	NodeID    string `json:"node_id"`
+	StartTime int64  `json:"start_time"`
+}
 
 func Start() (chan struct{}, error) {
 	var err error
@@ -33,7 +42,7 @@ func Start() (chan struct{}, error) {
 	}
 
 	key := fmt.Sprintf("/brokers/ids/%s", common.GlobalConfig.NodeID)
-	value := common.GlobalConfig.NodeID
+	value := getNodeInfo()
 	putResp, err := kv.Put(context.TODO(), key, value, clientv3.WithLease(leaseResp.ID))
 	if err != nil {
 		return stopChan, errors.Wrap(err, "kv put failed")
@@ -60,4 +69,19 @@ func Start() (chan struct{}, error) {
 	}()
 
 	return stopChan, nil
+}
+
+func getNodeInfo() string {
+	var nodeInfo Node
+	nodeInfo.IPAddress = common.GlobalConfig.IPAddress
+	nodeInfo.Port = common.GlobalConfig.ListenPort
+	nodeInfo.NodeID = common.GlobalConfig.NodeID
+	nodeInfo.StartTime = time.Now().Unix()
+
+	jsonBytes, err := json.Marshal(nodeInfo)
+	if err != nil {
+		return ""
+	}
+
+	return string(jsonBytes)
 }
