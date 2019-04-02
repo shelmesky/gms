@@ -165,15 +165,15 @@ func NewRequest(metaData, bodyData []byte) (net.Buffers, uint64) {
 }
 
 func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32) {
-	//meta data
+	//生成meta数据
 	metaData := common.NewCreateTopicAction(topicName, partitionCount, replicaCount)
-	// body data
+	// 生成body数据
 	bodyData := []byte{}
 
-	// generate request
+	// 把request、meta、body数据合并保存在net.Buffers结构中
 	netBuffer, totalLength := NewRequest(metaData, bodyData)
 
-	// send data use writev syscall
+	// 使用writev系用调用发送数据
 	n, err := netBuffer.WriteTo(conn)
 	if uint64(n) != totalLength || err != nil {
 		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
