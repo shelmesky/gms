@@ -45,7 +45,7 @@ type SocketBuffer struct {
 	out    int
 }
 
-func NewSocketBuffer(bufferSize int, conn *net.TCPConn) SocketBuffer {
+func newSocketBuffer(bufferSize int, conn *net.TCPConn) SocketBuffer {
 	var socketBuffer SocketBuffer
 	socketBuffer.buffer = make([]byte, bufferSize, bufferSize)
 	socketBuffer.size = bufferSize
@@ -149,22 +149,22 @@ type Client struct {
 	WriteBuffer SocketBuffer
 }
 
-func NewClient(conn *net.TCPConn) Client {
+func newClient(conn *net.TCPConn) Client {
 	var client Client
 	client.Conn = conn
-	client.ReadBuffer = NewSocketBuffer(common.READ_BUF_SIZE, conn)
-	client.WriteBuffer = NewSocketBuffer(common.WRITE_BUF_SIZE, conn)
+	client.ReadBuffer = newSocketBuffer(common.READ_BUF_SIZE, conn)
+	client.WriteBuffer = newSocketBuffer(common.WRITE_BUF_SIZE, conn)
 	return client
 }
 
-func GetAction(metaData []byte) int {
+func getAction(metaData []byte) int {
 	actionBytes := metaData[:4]
 	action := binary.LittleEndian.Uint32(actionBytes)
 	return int(action)
 }
 
 // 根据topic名字获取内存中Topic对象并写入数据
-func WriteMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
+func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
 	if len(topicName) > 0 {
 		// 获取Topic对象
 		topic := topicManager.GetTopic(topicName)
@@ -312,7 +312,7 @@ func batchRead(log *disklog.DiskLog, client *Client, target, length int) error {
 	return nil
 }
 
-func ReadMessage(client *Client, topicName, partitionIndex string, target, count uint32) error {
+func readMessage(client *Client, topicName, partitionIndex string, target, count uint32) error {
 	// 必须提供长度大于0的topic名字
 	if len(topicName) > 0 {
 		// 根据名字获得topic对象
@@ -352,6 +352,87 @@ func ReadMessage(client *Client, topicName, partitionIndex string, target, count
 	return utils.ParameterTopicMissed
 }
 
+// 解析客户端的请求， 发挥request结构， action结构， 和body数据
+func parseRequest(data []byte) (*common.Request, interface{}, interface{}) {
+	// 读取固定长读的Request头部
+	requestStartPos := 0
+	requestEndPos := common.REQUEST_LEN
+	requestBytes := data[requestStartPos:requestEndPos]
+	request := common.BytesToRequest(requestBytes, common.REQUEST_LEN)
+
+	// 读取不定长度的Meta数据
+	metaDataStartPos := requestEndPos
+	metaDataEndPos := metaDataStartPos + int(request.MetaDataLength)
+	metaData := data[metaDataStartPos:metaDataEndPos]
+
+	actionNum := getAction(metaData)
+
+	if actionNum == common.Write {
+		fullMessageStartPos := metaDataEndPos
+		fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
+		fullMessage := data[fullMessageStartPos:fullMessageEndPos]
+
+		writeAction := common.BytesToWriteMessageAction(metaData)
+
+		return request, writeAction, fullMessage
+
+	} else if actionNum == common.Read {
+		readAction := common.BytesToReadMessageAction(metaData)
+
+		return request, readAction, nil
+
+	} else if actionNum == common.CreateTopic {
+		createTopicAction := common.BytesToCreateTopicAction(metaData)
+		return request, createTopicAction, nil
+	}
+
+	return request, nil, nil
+}
+
+// 处理客户端的写请求
+func handleWriteAction(request *common.Request, action *common.WriteMessageAction, body []byte) {
+	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+	partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
+
+	// 写入消息
+	err := writeMessage(topicName, partitionNum, body, len(body))
+	if err != nil {
+		fmt.Printf("send message to %s failed: %s\n", topicName, err)
+	}
+}
+
+// 处理客户端的读请求
+func handleReadAction(client *Client, request *common.Request, action *common.ReadMessageAction, body interface{}) {
+	// 获取topic名字
+	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+	// 获取partition序号
+	partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
+	// 获取client希望开始读取的offset
+	targetOffset := action.TargetOffset
+	// 获取client希望读取的消息数量
+	count := action.Count
+	// 读取消息
+	err := readMessage(client, topicName, partitionNum, targetOffset, count)
+	if err != nil {
+		fmt.Printf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
+	}
+}
+
+// 处理客户端的创建topic请求
+func handleCreateTopicAction(request *common.Request, action *common.CreateTopicAction, body interface{}) {
+	// 获取topic name
+	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+	partitionCount := action.PartitionCount
+	replicaCount := action.ReplicaCount
+
+	err := CreateTopicOnEtcd(topicName, partitionCount, replicaCount)
+	if err != nil {
+
+	}
+
+	fmt.Println("got create topic request:", topicName, partitionCount, replicaCount)
+}
+
 func HandleConnection(client *Client) {
 	for {
 		// 获取totalLength即整个数据包的总长度
@@ -362,6 +443,7 @@ func HandleConnection(client *Client) {
 		}
 
 		// 分配内存
+		// TODO: 使用内存池
 		buffer := make([]byte, totalLength)
 
 		// 读取所有数据包
@@ -371,83 +453,18 @@ func HandleConnection(client *Client) {
 			break
 		}
 
-		// 读取固定长读的Request头部
-		requestStartPos := 0
-		requestEndPos := common.REQUEST_LEN
-		requestBytes := buffer[requestStartPos:requestEndPos]
-		request := common.BytesToRequest(requestBytes, common.REQUEST_LEN)
+		request, actionInterface, bodyInterface := parseRequest(buffer)
+		switch action := actionInterface.(type) {
 
-		// 读取不定长度的Meta数据
-		metaDataStartPos := requestEndPos
-		metaDataEndPos := metaDataStartPos + int(request.MetaDataLength)
-		metaData := buffer[metaDataStartPos:metaDataEndPos]
+		case *common.WriteMessageAction:
+			body := bodyInterface.([]byte)
+			handleWriteAction(request, action, body)
 
-		// 获取保存在Meta数据中的action类型
-		actionNum := GetAction(metaData)
+		case *common.ReadMessageAction:
+			handleReadAction(client, request, action, nil)
 
-		// 如果是写消息类型
-		if actionNum == common.Write {
-
-			// 获取完整的消息体
-			fullMessageStartPos := metaDataEndPos
-			fullMessageEndPos := fullMessageStartPos + int(request.BodyLength)
-			fullMessage := buffer[fullMessageStartPos:fullMessageEndPos]
-
-			fmt.Printf("receive [%d] request: %v, %v\n", len(requestBytes), requestBytes, request)
-			fmt.Printf("receive [%d] metadata %s, %v\n", len(metaData), string(metaData), metaData)
-
-			/*
-				///////////////////////////////////////////////////////////////////
-				messageHeadStartPos := metaDataEndPos
-				messageHeadEndPos := messageHeadStartPos + common.MESSAGE_LEN
-				messageHeadBytes := buffer[messageHeadStartPos:messageHeadEndPos]
-				messageHead := common.BytesToMessage(messageHeadBytes)
-
-				messageKeyStartPos := messageHeadEndPos
-				messageKeyEndPos := messageKeyStartPos + int(messageHead.KeyLength)
-				messageKey := buffer[messageKeyStartPos:messageKeyEndPos]
-
-				messageValueStartPos := messageKeyEndPos
-				messageValueEndPos := messageValueStartPos + int(messageHead.ValueLength)
-				messageValue := buffer[messageValueStartPos:messageValueEndPos]
-
-				fmt.Printf("***********************************************\n")
-				fmt.Printf("receive [%d] full message: %v\n", len(fullMessage), fullMessage)
-				fmt.Printf("receive [%d] message head: %v, %v\n", len(messageHeadBytes), messageHeadBytes, messageHead)
-				fmt.Printf("receive [%d] message key: %v, %s\n", len(messageKey), messageKey, string(messageKey))
-				fmt.Printf("receive [%d] message value: %v, %s\n", len(messageValue), messageValue, string(messageValue))
-				fmt.Printf("***********************************************\n\n")
-				///////////////////////////////////////////////////////////////////
-			*/
-
-			// 获取Meta数据中的topic名字和partition号
-			action := common.BytesToWriteMessageAction(metaData)
-			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
-			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
-
-			// 写入消息
-			err = WriteMessage(topicName, partitionNum, fullMessage, len(fullMessage))
-			if err != nil {
-				fmt.Printf("send message to %s failed: %s\n", topicName, err)
-			}
-		}
-
-		// 如果是读取消息
-		if actionNum == common.Read {
-			action := common.BytesToReadMessageAction(metaData)
-			// 获取topic名字
-			topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
-			// 获取partition序号
-			partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
-			// 获取client希望开始读取的offset
-			targetOffset := action.TargetOffset
-			// 获取client希望读取的消息数量
-			count := action.Count
-			// 读取消息
-			err = ReadMessage(client, topicName, partitionNum, targetOffset, count)
-			if err != nil {
-				fmt.Printf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
-			}
+		case *common.CreateTopicAction:
+			handleCreateTopicAction(request, action, nil)
 		}
 	}
 
@@ -466,7 +483,7 @@ func StartServer(listener *net.TCPListener) {
 		if err != nil {
 			panic(err.Error())
 		}
-		client := NewClient(conn)
+		client := newClient(conn)
 		client.SockFD = int(sockFile.Fd())
 
 		go HandleConnection(&client)
