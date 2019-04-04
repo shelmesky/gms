@@ -10,6 +10,7 @@ import (
 	"github.com/shelmesky/gms/server/node"
 	"github.com/shelmesky/gms/server/topics"
 	"github.com/shelmesky/gms/server/utils"
+	"github.com/sirupsen/logrus"
 	"io"
 	"log"
 	"math"
@@ -353,7 +354,7 @@ func readMessage(client *Client, topicName, partitionIndex string, target, count
 }
 
 // 解析客户端的请求， 发挥request结构， action结构， 和body数据
-func parseRequest(data []byte) (*common.Request, interface{}, interface{}) {
+func parseRequest(data []byte) (*common.RequestHeader, interface{}, interface{}) {
 	// 读取固定长读的Request头部
 	requestStartPos := 0
 	requestEndPos := common.REQUEST_LEN
@@ -390,7 +391,7 @@ func parseRequest(data []byte) (*common.Request, interface{}, interface{}) {
 }
 
 // 处理客户端的写请求
-func handleWriteAction(request *common.Request, action *common.WriteMessageAction, body []byte) {
+func handleWriteAction(request *common.RequestHeader, action *common.WriteMessageAction, body []byte) {
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
 
@@ -402,7 +403,8 @@ func handleWriteAction(request *common.Request, action *common.WriteMessageActio
 }
 
 // 处理客户端的读请求
-func handleReadAction(client *Client, request *common.Request, action *common.ReadMessageAction, body interface{}) {
+func handleReadAction(client *Client, request *common.RequestHeader, action *common.ReadMessageAction,
+	body interface{}) {
 	// 获取topic名字
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	// 获取partition序号
@@ -419,7 +421,11 @@ func handleReadAction(client *Client, request *common.Request, action *common.Re
 }
 
 // 处理客户端的创建topic请求
-func handleCreateTopicAction(request *common.Request, action *common.CreateTopicAction, body interface{}) {
+func handleCreateTopicAction(client *Client, request *common.RequestHeader, action *common.CreateTopicAction,
+	body interface{}) {
+
+	var response *common.Response
+
 	// 获取topic name
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	partitionCount := action.PartitionCount
@@ -427,7 +433,13 @@ func handleCreateTopicAction(request *common.Request, action *common.CreateTopic
 
 	err := CreateTopicOnEtcd(topicName, partitionCount, replicaCount)
 	if err != nil {
+		response = common.NewResponse(1, "FAILED", []byte{})
+	}
+	response = common.NewResponse(0, "OK", []byte{})
 
+	err = response.WriteTo(client.Conn)
+	if err != nil {
+		logrus.Printf("write data to [%s] failed: %s\n", err)
 	}
 
 	fmt.Println("got create topic request:", topicName, partitionCount, replicaCount)
@@ -464,7 +476,7 @@ func HandleConnection(client *Client) {
 			handleReadAction(client, request, action, nil)
 
 		case *common.CreateTopicAction:
-			handleCreateTopicAction(request, action, nil)
+			handleCreateTopicAction(client, request, action, nil)
 		}
 	}
 

@@ -68,7 +68,7 @@ func WriteMessage(conn *net.TCPConn) {
 	var MetaData []byte
 	var netBufferBody net.Buffers
 	var netBufferReq net.Buffers
-	var request common.Request
+	var request common.RequestHeader
 
 	totalBodyLength := uint64(0)
 
@@ -130,7 +130,7 @@ func WriteMessage(conn *net.TCPConn) {
 }
 
 func NewRequest(metaData, bodyData []byte) (net.Buffers, uint64) {
-	var request common.Request
+	var request common.RequestHeader
 	var netBuffer net.Buffers
 
 	// 设置request的版本号和请求序号
@@ -184,7 +184,7 @@ func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCou
 }
 
 func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset, count uint32) {
-	var request common.Request
+	var request common.RequestHeader
 	var metaData []byte
 	var netBuffer net.Buffers
 
