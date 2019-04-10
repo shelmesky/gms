@@ -54,6 +54,17 @@ func Start() {
 
 // 监听/brokers/id/目录的变化并处理，例如新增或删除
 func WatchBrokers() {
+	var err error
+
+	// watcher中使用新的etcd连接
+	client, err = etcd.New(etcd.Config{
+		Endpoints: []string{common.GlobalConfig.EtcdServer},
+	})
+	if err != nil {
+		log.Println(errors.Wrap(err, "connect to etcd failed"))
+		os.Exit(1)
+	}
+
 	watcher := clientv3.NewWatcher(client)
 	watchChan := watcher.Watch(context.Background(), "/brokers/ids/", clientv3.WithPrefix())
 	for wresp := range watchChan {
@@ -70,7 +81,28 @@ func WatchBrokers() {
 
 // 监听/topics/目录并处理，例如新增或删除
 func WatchTopics() {
+	var err error
 
+	client, err = etcd.New(etcd.Config{
+		Endpoints: []string{common.GlobalConfig.EtcdServer},
+	})
+	if err != nil {
+		log.Println(errors.Wrap(err, "connect to etcd failed"))
+		os.Exit(1)
+	}
+
+	watcher := clientv3.NewWatcher(client)
+	watchChan := watcher.Watch(context.Background(), "/topics/", clientv3.WithPrefix())
+	for wresp := range watchChan {
+		for _, ev := range wresp.Events {
+			switch ev.Type {
+			case clientv3.EventTypePut:
+				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+			case clientv3.EventTypeDelete:
+				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+			}
+		}
+	}
 }
 
 func HandleLeaderChange(leaderChan <-chan bool) {
