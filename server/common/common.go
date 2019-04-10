@@ -2,17 +2,19 @@ package common
 
 import (
 	"github.com/sirupsen/logrus"
+	"io"
 	"net"
 	"unsafe"
 )
 
 const (
-	REQUEST_LEN       = 24   // Request结构的长度
-	WRITE_MESSAGE_LEN = 40   // 写入型消息的头部长度
-	READ_BUF_SIZE     = 4096 // RingBuffer读取缓冲区大小
-	WRITE_BUF_SIZE    = 4096 // RingBuffer写入缓冲区大小
-	TOPIC_NAME_LEN    = 128  // topic名字允许的最大长度
-	PARTITION_NUM_LEN = 128  // partition分区号允许的最大长度
+	REQUEST_LEN         = 24   // Request结构的长度
+	WRITE_MESSAGE_LEN   = 40   // 写入型消息的头部长度
+	READ_BUF_SIZE       = 4096 // RingBuffer读取缓冲区大小
+	WRITE_BUF_SIZE      = 4096 // RingBuffer写入缓冲区大小
+	TOPIC_NAME_LEN      = 128  // topic名字允许的最大长度
+	PARTITION_NUM_LEN   = 128  // partition分区号允许的最大长度
+	RESPONSE_HEADER_LEN = 80
 )
 
 const (
@@ -70,7 +72,14 @@ func NewResponse(code uint32, message string, body []byte) *Response {
 
 	responseHeader.TotalLength = 80
 	responseHeader.Code = code
-	for i := 0; i < 64; i++ {
+
+	n := 0
+	if len(message) > 64 {
+		n = 64
+	} else {
+		n = len(message)
+	}
+	for i := 0; i < n; i++ {
 		responseHeader.Message[i] = message[i]
 	}
 
@@ -83,6 +92,7 @@ func NewResponse(code uint32, message string, body []byte) *Response {
 	}
 
 	response.buffer = netBuffers
+	response.header = responseHeader
 
 	return &response
 }
@@ -91,7 +101,7 @@ func (this *Response) WriteTo(conn net.Conn) error {
 	// 使用writev系用调用发送数据
 	n, err := this.buffer.WriteTo(conn)
 	if uint64(n) != this.header.TotalLength || err != nil {
-		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n",
+		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %v\n",
 			this.header.TotalLength, n, err)
 		if err = conn.Close(); err != nil {
 			logrus.Println("close socket failed:", err)
@@ -112,9 +122,21 @@ func ResponseHeaderToBytes(request *ResponseHeader) []byte {
 	return data
 }
 
-func BytesToResponseHeader(data []byte, length int) *ResponseHeader {
+func BytesToResponseHeader(data []byte) *ResponseHeader {
 	var r *ResponseHeader = *(**ResponseHeader)(unsafe.Pointer(&data))
 	return r
+}
+
+func ReadResponseHeader(conn *net.TCPConn) (*ResponseHeader, error) {
+	responseBuffer := make([]byte, RESPONSE_HEADER_LEN)
+	readN, err := io.ReadFull(conn, responseBuffer)
+	if err != nil {
+		logrus.Printf("read data from tcp conn failed, expect %d but read %d: %s\n",
+			RESPONSE_HEADER_LEN, readN, err)
+		return nil, err
+	}
+
+	return BytesToResponseHeader(responseBuffer), nil
 }
 
 /************************************************************************/

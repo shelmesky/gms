@@ -182,6 +182,13 @@ func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCou
 			logrus.Println("close socket failed:", err)
 		}
 	}
+
+	responseHeader, err := common.ReadResponseHeader(conn)
+	if err != nil {
+		logrus.Println("read response header failed:", err)
+	} else {
+		fmt.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
+	}
 }
 
 func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset, count uint32) {

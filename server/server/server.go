@@ -454,6 +454,9 @@ func HandleConnection(client *Client) {
 			break
 		}
 
+		// 实际的总长度应减去第一个64位字段
+		totalLength = totalLength - 8
+
 		// 分配内存
 		// TODO: 使用内存池
 		buffer := make([]byte, totalLength)
