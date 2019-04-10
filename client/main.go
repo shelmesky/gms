@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/sirupsen/logrus"
+	"io"
 	"net"
 	"os"
 )
@@ -235,14 +236,14 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 		offsetBuf := make([]byte, 4)
 		lengthBuf := make([]byte, 4)
 
-		readN, err := conn.Read(offsetBuf)
+		readN, err := io.ReadFull(conn, offsetBuf)
 		if readN == 0 || err != nil {
 			break
 		}
 
 		offset := binary.LittleEndian.Uint32(offsetBuf)
 
-		readN, err = conn.Read(lengthBuf)
+		readN, err = io.ReadFull(conn, lengthBuf)
 		if readN == 0 || err != nil {
 			break
 		}
@@ -253,7 +254,7 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 
 		bodyBuf := make([]byte, length)
 
-		readN, err = conn.Read(bodyBuf)
+		readN, err = io.ReadFull(conn, bodyBuf)
 		if readN == 0 || err != nil {
 			break
 		}
