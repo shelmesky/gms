@@ -2,9 +2,13 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
+	"github.com/shelmesky/gms/server/node"
+
+	//	"github.com/shelmesky/gms/server/server"
 	log "github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	etcd "go.etcd.io/etcd/clientv3"
@@ -21,6 +25,7 @@ var (
 	session          *concurrency.Session
 	election         *concurrency.Election
 	client           *etcd.Client
+	isController     = false
 )
 
 func Start() {
@@ -96,17 +101,164 @@ func WatchTopics() {
 	for wresp := range watchChan {
 		for _, ev := range wresp.Events {
 			switch ev.Type {
+
 			case clientv3.EventTypePut:
+				// 创建topic
 				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				err = ControllerSendCreateTopic(ev.Kv.Key, ev.Kv.Value)
+				if err != nil {
+					log.Printf("create topic [%q] failed: %v\n", ev.Kv.Key, err)
+				} else {
+					log.Printf("create topic [%q] success!\n", ev.Kv.Key)
+				}
+
 			case clientv3.EventTypeDelete:
+				// 删除topic
 				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 			}
 		}
 	}
 }
 
+// 分区和副本的数量总和， 例如3个分区， 每个分区3副本， 则总共3x3个副本分区
+// 将这些'分区副本'按照集群内节点的数量排序依次分配
+// nodeCount: 节点的数量
+// allReplicaCount: 所有分区的副本数量
+func generateDisList(nodeCount int, allReplicaCount int) []int {
+	var disList []int
+	var nodeTemp []int
+
+	for i := 0; i < nodeCount; i++ {
+		nodeTemp = append(nodeTemp, i)
+	}
+
+	idx := 0
+	startIdx := 0
+	round := false
+	for j := 0; j < allReplicaCount; j++ {
+
+		if idx == nodeCount {
+			idx = 0
+		}
+
+		if len(disList) > 0 && len(disList)%nodeCount == 0 {
+			round = true
+		}
+		if round == true {
+			startIdx += 1
+			if startIdx == nodeCount {
+				startIdx = 0
+			}
+			idx = startIdx
+			round = false
+		}
+
+		value := nodeTemp[idx]
+		disList = append(disList, value)
+
+		idx += 1
+	}
+
+	return disList
+}
+
+/*
+Controller发送创建topic的指令给各node.
+1. 查询当前节点是不是controller， 不是则不处理
+2. 在etcd中查询当前的节点数量
+3. 如果节点数量小于replica数量则不创建
+4. 根据节点的数量， 按照partition的排序，以此将创建副本的命令发送给node
+*/
+func ControllerSendCreateTopic(key, value []byte) error {
+	if !isController {
+		return fmt.Errorf("current node is not controller, just return.")
+	}
+
+	var err error
+	var client *clientv3.Client
+
+	var topicInfo common.Topic
+
+	err = json.Unmarshal(value, &topicInfo)
+	if err != nil {
+		return err
+	}
+
+	client, err = clientv3.New(clientv3.Config{
+		Endpoints: []string{common.GlobalConfig.EtcdServer},
+	})
+
+	if err != nil {
+		return fmt.Errorf("%s: connect to kv server failed\n", err)
+	}
+
+	kv := clientv3.NewKV(client)
+
+	allNodeKey := "/brokers/ids/"
+	getResp, err := kv.Get(context.Background(), allNodeKey, clientv3.WithPrefix())
+
+	if err != nil {
+		return fmt.Errorf("%s: get %s from etcd failed\n", err, allNodeKey)
+	}
+
+	// 获取node数量
+	nodeNum := len(getResp.Kvs)
+	// 如果node
+	if uint32(nodeNum) < topicInfo.ReplicaCount {
+		return fmt.Errorf("replica count bigger than num of node.")
+	}
+
+	var nodeList []*node.Node
+
+	for i := 0; i < nodeNum; i++ {
+		nodeInfo := new(node.Node)
+		err = json.Unmarshal(getResp.Kvs[i].Value, nodeInfo)
+		if err == nil {
+			nodeList = append(nodeList, nodeInfo)
+		}
+	}
+
+	type nodePartitionReplica struct {
+		nodeIndex      int
+		nodeID         string
+		partitionIndex int
+		replicaIndex   int
+	}
+
+	var nodeParRepList []*nodePartitionReplica
+
+	// 依次将分区和副本分配到每个节点上
+	for m := 0; m < int(topicInfo.PartitionCount); m++ {
+		for n := 0; n < int(topicInfo.ReplicaCount); n++ {
+			item := new(nodePartitionReplica)
+			item.partitionIndex = m
+			item.replicaIndex = n
+			nodeParRepList = append(nodeParRepList, item)
+		}
+	}
+
+	list := generateDisList(nodeNum, int(topicInfo.PartitionCount*topicInfo.ReplicaCount))
+
+	for idx := range nodeParRepList {
+		nodeParRepList[idx].nodeIndex = list[idx]
+		node := nodeList[list[idx]]
+		nodeParRepList[idx].nodeID = node.NodeID
+	}
+
+	for x := range nodeParRepList {
+		fmt.Println("aaaaaaaaa", nodeParRepList[x])
+	}
+
+	return nil
+}
+
 func HandleLeaderChange(leaderChan <-chan bool) {
 	for leader := range leaderChan {
+		if leader == true {
+			isController = true
+		} else {
+			isController = false
+		}
 		fmt.Printf("Leader: %t\n", leader)
 	}
 }

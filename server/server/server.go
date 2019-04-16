@@ -479,7 +479,7 @@ func HandleConnection(client *Client) {
 			handleReadAction(client, request, action, nil)
 
 		case *common.CreateTopicAction:
-			handleCreateTopicAction(client, request, action, nil)
+			go handleCreateTopicAction(client, request, action, nil)
 		}
 	}
 

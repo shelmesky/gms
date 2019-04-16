@@ -183,6 +183,7 @@ func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCou
 		}
 	}
 
+	// 读取服务器返回的response
 	responseHeader, err := common.ReadResponseHeader(conn)
 	if err != nil {
 		logrus.Println("read response header failed:", err)

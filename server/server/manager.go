@@ -9,13 +9,6 @@ import (
 	"log"
 )
 
-// 在etcd中保存的topic信息
-type Topic struct {
-	TopicName      string `json:"topic_name"`
-	PartitionCount uint32 `json:"partition_count"`
-	ReplicaCount   uint32 `json:"replica_count"`
-}
-
 func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount uint32) error {
 	var err error
 	var client *clientv3.Client
@@ -54,7 +47,7 @@ func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount uint32) er
 }
 
 func makeTopicInfo(topicName string, partitionCount, replicaCount uint32) string {
-	var topic Topic
+	var topic common.Topic
 	topic.TopicName = topicName
 	topic.PartitionCount = partitionCount
 	topic.ReplicaCount = replicaCount
