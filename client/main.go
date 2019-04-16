@@ -130,41 +130,6 @@ func WriteMessage(conn *net.TCPConn) {
 	}
 }
 
-func NewRequest(metaData, bodyData []byte) (net.Buffers, uint64) {
-	var request common.RequestHeader
-	var netBuffer net.Buffers
-
-	// 设置request的版本号和请求序号
-	request.Version = 1001
-	request.Sequence = 2
-
-	metaDataLength := len(metaData)
-	bodyLength := len(bodyData)
-
-	// 设置request中的各种长度属性
-	request.BodyLength = uint32(bodyLength)                                                    // body数据长度
-	request.MetaDataLength = uint32(metaDataLength)                                            // meta数据长度
-	request.TotalLength = 8 + common.REQUEST_LEN + uint64(metaDataLength) + uint64(bodyLength) // 总长度
-
-	// 将request结构体转换为[]byte
-	requestBytes := common.RequestToBytes(&request)
-
-	// 写入总长度到一个8字节的数组中
-	totalLengthBytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(totalLengthBytes, request.TotalLength)
-
-	// 想net.Buffers中追加字节数组
-	netBuffer = append(netBuffer, totalLengthBytes) // 数据包总长度数据
-	netBuffer = append(netBuffer, requestBytes)     // request结构数据
-	netBuffer = append(netBuffer, metaData)         // meta结构数据
-	if bodyLength > 0 {
-		netBuffer = append(netBuffer, bodyData) // body数据
-	}
-
-	// 返回net.Buffers和总长度
-	return netBuffer, request.TotalLength
-}
-
 func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32) {
 	//生成meta数据
 	metaData := common.NewCreateTopicAction(topicName, partitionCount, replicaCount)
@@ -172,7 +137,7 @@ func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCou
 	bodyData := []byte{}
 
 	// 把request、meta、body数据合并保存在net.Buffers结构中
-	netBuffer, totalLength := NewRequest(metaData, bodyData)
+	netBuffer, totalLength := common.NewRequest(metaData, bodyData)
 
 	// 使用writev系用调用发送数据
 	n, err := netBuffer.WriteTo(conn)
