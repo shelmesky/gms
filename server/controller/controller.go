@@ -319,7 +319,7 @@ func HandleLeaderChange(leaderChan <-chan bool) {
 
 func runElection(ctx context.Context) (<-chan bool, error) {
 	var observe <-chan etcd.GetResponse
-	var node *etcd.GetResponse
+	var serverNode *etcd.GetResponse
 	var errChan chan error
 	var isLeader bool
 	var err error
@@ -345,7 +345,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 		for {
 
 			// 首先查找目前的leader，如果出错则处理
-			if node, err = election.Leader(ctx); err != nil {
+			if serverNode, err = election.Leader(ctx); err != nil {
 				// 如果错误是找不到leader，则不做任何处理，否则重新连接
 				if err != concurrency.ErrElectionNoLeader {
 					log.Errorf("while determining election leader: %s", err)
@@ -360,17 +360,17 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 				//    session has expired during the observation loop.
 				// 2. Resign the leadership immediately to allow a new leader to be chosen.
 				//    This option will almost always result in transfer of leadership.
-				if string(node.Kvs[0].Value) == common.GlobalConfig.NodeID { //如果leader是自身
+				if string(serverNode.Kvs[0].Value) == common.GlobalConfig.NodeID { //如果leader是自身
 					// If we want to resume leadership
 					if resumeLeader { // 如果打开了恢复leader的开关
 						// Recreate our session with the old lease id
 						// 使用旧的lease id创建session
-						if err = newSession(ctx, node.Kvs[0].Lease); err != nil {
+						if err = newSession(ctx, serverNode.Kvs[0].Lease); err != nil {
 							log.Errorf("while re-establishing session with lease: %s", err)
 							goto reconnect
 						}
 						election = concurrency.ResumeElection(session, electionName,
-							string(node.Kvs[0].Key), node.Kvs[0].CreateRevision)
+							string(serverNode.Kvs[0].Key), serverNode.Kvs[0].CreateRevision)
 
 						// Because Campaign() only returns if the election entry doesn't exist
 						// we must skip the campaign call and go directly to observe when resuming
@@ -380,7 +380,7 @@ func runElection(ctx context.Context) (<-chan bool, error) {
 						// longer leader anyway.
 						ctx, cancel := context.WithTimeout(ctx, time.Duration(TTL)*time.Second)
 						election := concurrency.ResumeElection(session, electionName,
-							string(node.Kvs[0].Key), node.Kvs[0].CreateRevision)
+							string(serverNode.Kvs[0].Key), serverNode.Kvs[0].CreateRevision)
 						err = election.Resign(ctx)
 						cancel()
 						if err != nil {
