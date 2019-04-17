@@ -46,27 +46,41 @@ type PartitionList struct {
 // 在目录下创建n个partition
 // dirName即是topic name
 func CreatePartitionList(topicName string, numPartitions int) error {
+	for i := 0; i < numPartitions; i++ {
+		err := CreatePartition(topicName, i)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// 根据topicName和partitionIndex创建目录并初始化内容
+func CreatePartition(topicName string, partitionIndex int) error {
 	var err error
+	var partitionDirName string
 
 	if _, err = os.Stat(topicName); os.IsNotExist(err) {
 		err = os.Mkdir(topicName, 0775)
 		if err != nil {
 			goto failed
 		}
+	}
 
-		// 创建N个partition, 序号从0开始
-		for i := 0; i < numPartitions; i++ {
-			partitionDirName := path.Join(topicName, topicName+"-"+strconv.Itoa(i))
-			err = os.Mkdir(partitionDirName, 0775)
-			if err != nil {
-				goto failed
-			}
+	partitionDirName = path.Join(topicName, topicName+"-"+strconv.Itoa(partitionIndex))
 
-			var log disklog.DiskLog
-			err = log.Init(partitionDirName)
-			if err != nil {
-				goto failed
-			}
+	if _, err = os.Stat(partitionDirName); os.IsNotExist(err) {
+		// 根据序号创建partition
+		err = os.Mkdir(partitionDirName, 0775)
+		if err != nil {
+			goto failed
+		}
+
+		var log disklog.DiskLog
+		err = log.Init(partitionDirName)
+		if err != nil {
+			goto failed
 		}
 
 		goto success
