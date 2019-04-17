@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
+	"time"
 )
 
 var (
@@ -245,12 +247,16 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 func main() {
 	flag.Parse()
 
-	addr := &net.TCPAddr{net.ParseIP(*serverAddress), *serverPort, ""}
-	conn, err := net.DialTCP("tcp", nil, addr)
+	port := strconv.Itoa(*serverPort)
+	target := *serverAddress + ":" + port
+	conn, err := net.DialTimeout("tcp", target, time.Second*2)
+
 	if err != nil {
 		fmt.Println("dial failed:", err)
 		return
 	}
+
+	tcpConn := conn.(*net.TCPConn)
 
 	if *action == "" {
 		fmt.Println("please specify action!")
@@ -258,11 +264,11 @@ func main() {
 	}
 
 	if *action == "write" {
-		WriteMessage(conn)
+		WriteMessage(tcpConn)
 	} else if *action == "read" {
-		ReadMessage(conn, "mytopic", "0", 1, 5)
+		ReadMessage(tcpConn, "mytopic", "0", 1, 5)
 	} else if *action == "createTopic" {
-		CreateTopic(conn, "mytopic", 3, 3)
+		CreateTopic(tcpConn, "mytopic", 3, 3)
 	} else {
 		fmt.Println("action is not support!")
 		os.Exit(1)
