@@ -232,16 +232,25 @@ func ControllerSendCreateTopic(key, value []byte) error {
 			item := new(rpc.NodePartitionReplicaInfo)
 			item.PartitionIndex = m
 			item.ReplicaIndex = n
+			// 设置副本编号为0是leader副本
+			if n == 0 {
+				item.IsLeader = true
+			}
 			nodeParRepList = append(nodeParRepList, item)
 		}
 	}
 
+	// 将分区x副本的值作为数量分配给所有节点的分配列表， 类型是[]int， 长度是分区x副本.
+	// 保存的元素是节点在节点列表中的索引值.
 	list := generateDisList(nodeNum, int(topicInfo.PartitionCount*topicInfo.ReplicaCount))
 
-	// 依次将分区和副本分配到每个节点上
+	// 依次将分区和副本分配到每个节点上.
+	// 因为list的长度等于nodeParRepList列表的长度， 所以nodeList[nodeIndex]不会找不到元素.
 	for idx := range nodeParRepList {
-		nodeParRepList[idx].NodeIndex = list[idx]
-		node := nodeList[list[idx]]
+		nodeIndex := list[idx]
+		node := nodeList[nodeIndex]
+
+		nodeParRepList[idx].NodeIndex = nodeIndex
 		nodeParRepList[idx].NodeID = node.NodeID
 		nodeParRepList[idx].TopicName = topicInfo.TopicName
 	}
