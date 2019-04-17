@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/node"
+	"github.com/shelmesky/gms/server/rpc"
 
 	//	"github.com/shelmesky/gms/server/server"
 	log "github.com/sirupsen/logrus"
@@ -208,46 +209,48 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		return fmt.Errorf("replica count bigger than num of node.")
 	}
 
+	// 保存所有node的列表和map
 	var nodeList []*node.Node
+	var nodeMap map[string]*node.Node
+	nodeMap = make(map[string]*node.Node)
 
 	for i := 0; i < nodeNum; i++ {
 		nodeInfo := new(node.Node)
 		err = json.Unmarshal(getResp.Kvs[i].Value, nodeInfo)
 		if err == nil {
 			nodeList = append(nodeList, nodeInfo)
+			nodeMap[nodeInfo.NodeID] = nodeInfo
 		}
 	}
 
-	type nodePartitionReplica struct {
-		nodeIndex      int
-		nodeID         string
-		partitionIndex int
-		replicaIndex   int
-	}
+	// 将所有副本的所有副本(大于总共node的数量)分配给所有node的列表
+	var nodeParRepList []*rpc.NodePartitionReplicaInfo
 
-	var nodeParRepList []*nodePartitionReplica
-
-	// 依次将分区和副本分配到每个节点上
+	// 生成所有分区的所有副本
 	for m := 0; m < int(topicInfo.PartitionCount); m++ {
 		for n := 0; n < int(topicInfo.ReplicaCount); n++ {
-			item := new(nodePartitionReplica)
-			item.partitionIndex = m
-			item.replicaIndex = n
+			item := new(rpc.NodePartitionReplicaInfo)
+			item.PartitionIndex = m
+			item.ReplicaIndex = n
 			nodeParRepList = append(nodeParRepList, item)
 		}
 	}
 
 	list := generateDisList(nodeNum, int(topicInfo.PartitionCount*topicInfo.ReplicaCount))
 
+	// 依次将分区和副本分配到每个节点上
 	for idx := range nodeParRepList {
-		nodeParRepList[idx].nodeIndex = list[idx]
+		nodeParRepList[idx].NodeIndex = list[idx]
 		node := nodeList[list[idx]]
-		nodeParRepList[idx].nodeID = node.NodeID
+		nodeParRepList[idx].NodeID = node.NodeID
+		nodeParRepList[idx].TopicName = topicInfo.TopicName
 	}
 
-	for x := range nodeParRepList {
-		fmt.Println("aaaaaaaaa", nodeParRepList[x])
-	}
+	/*
+		在etcd的/topics-brokers/topicName-0这个key下保存topic名字为topicName， 分区序号为0的分区信息。
+		value保存的信息是这个分区对应的所有副本的信息
+		例如key为topicName-0， value为common.NodePartitionReplicaInfo结构列表.
+	*/
 
 	return nil
 }

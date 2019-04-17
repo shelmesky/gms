@@ -8,6 +8,7 @@ import (
 	"github.com/shelmesky/gms/server/controller"
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/node"
+	"github.com/shelmesky/gms/server/rpc"
 	"github.com/shelmesky/gms/server/topics"
 	"github.com/shelmesky/gms/server/utils"
 	"github.com/sirupsen/logrus"
@@ -15,6 +16,8 @@ import (
 	"log"
 	"math"
 	"net"
+	"net/http"
+	irpc "net/rpc"
 	"os"
 	"strconv"
 )
@@ -502,6 +505,31 @@ func StartServer(listener *net.TCPListener) {
 		client.SockFD = int(sockFile.Fd())
 
 		go HandleConnection(&client)
+	}
+}
+
+func RunRPC(address string, port int) {
+	internalRPC := new(rpc.InternalRPC)
+	err := irpc.Register(internalRPC)
+	if err != nil {
+		log.Println("rpc server register handler failed:", err)
+		os.Exit(1)
+	}
+	irpc.HandleHTTP()
+
+	portStr := strconv.Itoa(port)
+	target := address + ":" + portStr
+	listen, err := net.Listen("tcp", target)
+
+	if err != nil {
+		log.Println("rpc server listen failed:", err)
+		os.Exit(1)
+	}
+
+	err = http.Serve(listen, nil)
+	if err != nil {
+		log.Println("rpc server start failed:", err)
+		os.Exit(1)
 	}
 }
 

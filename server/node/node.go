@@ -15,6 +15,7 @@ import (
 type Node struct {
 	IPAddress string `json:"ip_address"`
 	Port      int    `json:"port"`
+	RPCPort   int    `json:"rpc_port"`
 	NodeID    string `json:"node_id"`
 	StartTime int64  `json:"start_time"`
 }
@@ -85,6 +86,7 @@ func getNodeInfo() string {
 	var nodeInfo Node
 	nodeInfo.IPAddress = common.GlobalConfig.IPAddress
 	nodeInfo.Port = common.GlobalConfig.ListenPort
+	nodeInfo.RPCPort = common.GlobalConfig.RPCListenPort
 	nodeInfo.NodeID = common.GlobalConfig.NodeID
 	nodeInfo.StartTime = time.Now().Unix()
 

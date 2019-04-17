@@ -63,8 +63,8 @@ func NewRequest(metaData, bodyData []byte) (net.Buffers, uint64) {
 	bodyLength := len(bodyData)
 
 	// 设置request中的各种长度属性
-	request.BodyLength = uint32(bodyLength)                                                    // body数据长度
-	request.MetaDataLength = uint32(metaDataLength)                                            // meta数据长度
+	request.BodyLength = uint32(bodyLength)                                             // body数据长度
+	request.MetaDataLength = uint32(metaDataLength)                                     // meta数据长度
 	request.TotalLength = 8 + REQUEST_LEN + uint64(metaDataLength) + uint64(bodyLength) // 总长度
 
 	// 将request结构体转换为[]byte
