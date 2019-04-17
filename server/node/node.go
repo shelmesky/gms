@@ -7,7 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
 	"go.etcd.io/etcd/clientv3"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -72,7 +72,7 @@ func Start() (chan struct{}, error) {
 				if err != nil {
 					log.Fatal(errors.Wrap(err, "KeepAliveOnce failed"))
 				}
-				log.Println("KeepAliveOnce:", keepResp.String())
+				log.Warningln("KeepAliveOnce:", keepResp.String())
 
 				time.Sleep(time.Second * 2)
 			}

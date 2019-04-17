@@ -75,9 +75,9 @@ func WatchBrokers() {
 		for _, ev := range wresp.Events {
 			switch ev.Type {
 			case clientv3.EventTypePut:
-				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 			case clientv3.EventTypeDelete:
-				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 			}
 		}
 	}
@@ -103,7 +103,7 @@ func WatchTopics() {
 
 			case clientv3.EventTypePut:
 				// 创建topic
-				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 				err = ControllerSendCreateTopic(ev.Kv.Key, ev.Kv.Value)
 				if err != nil {
 					log.Printf("create topic [%q] failed: %v\n", ev.Kv.Key, err)
@@ -113,7 +113,7 @@ func WatchTopics() {
 
 			case clientv3.EventTypeDelete:
 				// 删除topic
-				fmt.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
 			}
 		}
 	}
@@ -313,7 +313,7 @@ func HandleLeaderChange(leaderChan <-chan bool) {
 		} else {
 			isController = false
 		}
-		fmt.Printf("Leader: %t\n", leader)
+		log.Debugln("Leader: %t\n", leader)
 	}
 }
 
