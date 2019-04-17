@@ -32,8 +32,6 @@ var (
 func Start() {
 	var err error
 
-	log.SetLevel(log.InfoLevel)
-
 	client, err = etcd.New(etcd.Config{
 		Endpoints: []string{common.GlobalConfig.EtcdServer},
 	})

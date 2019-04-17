@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/server"
+	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
 	"syscall"
@@ -25,13 +25,15 @@ func main() {
 	flag.Parse()
 	Init()
 
+	log.SetLevel(log.InfoLevel)
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT)
 	go func() {
 		for {
 			select {
 			case <-c:
-				fmt.Printf("Server exit\n")
+				log.Println("Server exit\n")
 				os.Exit(1)
 			}
 		}

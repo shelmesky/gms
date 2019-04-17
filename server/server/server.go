@@ -11,9 +11,8 @@ import (
 	"github.com/shelmesky/gms/server/rpc"
 	"github.com/shelmesky/gms/server/topics"
 	"github.com/shelmesky/gms/server/utils"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"math"
 	"net"
 	"net/http"
@@ -27,8 +26,8 @@ var (
 )
 
 func Init() {
-	if err := os.Chdir("./data"); err != nil {
-		fmt.Println(err)
+	if err := os.Chdir(common.GlobalConfig.DataDir); err != nil {
+		log.Errorln(err)
 		os.Exit(1)
 	}
 
@@ -69,7 +68,7 @@ func (b *SocketBuffer) ReadFromSocket() int {
 	if err != nil {
 		return 0
 	}
-	fmt.Printf("read %d bytes from socket\n", n)
+	log.Printf("read %d bytes from socket\n", n)
 	b.WriteBytes(buffer[:n], n)
 
 	return n
@@ -105,7 +104,7 @@ func (b *SocketBuffer) ReadBytes(buffer []byte, size int) int {
 }
 
 func (b *SocketBuffer) WriteBytes(buffer []byte, size int) int {
-	fmt.Printf("write %d bytes to ring buffer\n", len(buffer))
+	log.Printf("write %d bytes to ring buffer\n", len(buffer))
 	if size > b.size {
 		return 0
 	}
@@ -211,7 +210,7 @@ client: 客户端连接对象
 target: 开始读取的offset
 length: 希望读取几个消息
 */
-func batchRead(log *disklog.DiskLog, client *Client, target, length int) error {
+func batchRead(diskLog *disklog.DiskLog, client *Client, target, length int) error {
 	var bytesRead int
 	var originPos int64
 
@@ -219,7 +218,7 @@ func batchRead(log *disklog.DiskLog, client *Client, target, length int) error {
 	// 获取segment即对应的文件段对象
 	// segmentPos即文件段对象在所有segment list中的索引
 	// logFilePos即target offset在对应segment开始读取的位置
-	segmentPos, segment, logFilePos, err := log.Search(target)
+	segmentPos, segment, logFilePos, err := diskLog.Search(target)
 	if err != nil {
 		return err
 	}
@@ -291,7 +290,7 @@ func batchRead(log *disklog.DiskLog, client *Client, target, length int) error {
 
 			// 切换到下个segment继续读
 			segmentPos += 1
-			segment, err = log.GetSegment(segmentPos)
+			segment, err = diskLog.GetSegment(segmentPos)
 			// 如果返回错误,说明已经读取完所有的segment
 			if err != nil {
 				return err
@@ -401,7 +400,7 @@ func handleWriteAction(request *common.RequestHeader, action *common.WriteMessag
 	// 写入消息
 	err := writeMessage(topicName, partitionNum, body, len(body))
 	if err != nil {
-		fmt.Printf("send message to %s failed: %s\n", topicName, err)
+		log.Errorf("send message to %s failed: %s\n", topicName, err)
 	}
 }
 
@@ -419,7 +418,7 @@ func handleReadAction(client *Client, request *common.RequestHeader, action *com
 	// 读取消息
 	err := readMessage(client, topicName, partitionNum, targetOffset, count)
 	if err != nil {
-		fmt.Printf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
+		log.Errorf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
 	}
 }
 
@@ -442,10 +441,10 @@ func handleCreateTopicAction(client *Client, request *common.RequestHeader, acti
 
 	err = response.WriteTo(client.Conn)
 	if err != nil {
-		logrus.Printf("write data to [%s] failed: %s\n", err)
+		log.Printf("write data to [%s] failed: %s\n", err)
 	}
 
-	fmt.Println("got create topic request:", topicName, partitionCount, replicaCount)
+	log.Println("got create topic request:", topicName, partitionCount, replicaCount)
 }
 
 func HandleConnection(client *Client) {
@@ -453,7 +452,7 @@ func HandleConnection(client *Client) {
 		// 获取totalLength即整个数据包的总长度
 		totalLength, err := client.ReadBuffer.ReadUint64()
 		if err != nil {
-			fmt.Println("read failed:", err)
+			log.Errorln("read failed:", err)
 			break
 		}
 
@@ -467,7 +466,7 @@ func HandleConnection(client *Client) {
 		// 读取所有数据包
 		packetReadLen := client.ReadBuffer.ReadBytes(buffer, int(totalLength))
 		if packetReadLen == 0 {
-			fmt.Println("connection lost")
+			log.Errorln("connection lost")
 			break
 		}
 
@@ -486,14 +485,14 @@ func HandleConnection(client *Client) {
 		}
 	}
 
-	fmt.Println("close connection:", client.Conn.Close())
+	log.Println("close connection:", client.Conn.Close())
 }
 
 func StartServer(listener *net.TCPListener) {
 	for {
 		conn, err := listener.AcceptTCP()
 		if err != nil {
-			fmt.Println("Accept() failed:", err)
+			log.Errorln("Accept() failed:", err)
 			continue
 		}
 
@@ -554,7 +553,7 @@ func StartController() {
 func StartNode() {
 	_, err := node.Start()
 	if err != nil {
-		fmt.Println("start node failed:", err)
+		log.Errorln("start node failed:", err)
 		os.Exit(1)
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
 	"github.com/shelmesky/highwayhash"
+	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"os"
 	"path"
@@ -27,12 +28,12 @@ func Hash(data []byte) uint64 {
 // 将为每个partition启动一个线程
 type Partition struct {
 	dirName string           // 目录名
-	log     *disklog.DiskLog // 日志管理器
+	diskLog *disklog.DiskLog // 日志管理器
 	queue   chan []byte
 }
 
 func (p *Partition) GetLog() *disklog.DiskLog {
-	return p.log
+	return p.diskLog
 }
 
 // 一组partition
@@ -77,8 +78,8 @@ func CreatePartition(topicName string, partitionIndex int) error {
 			goto failed
 		}
 
-		var log disklog.DiskLog
-		err = log.Init(partitionDirName)
+		var diskLog disklog.DiskLog
+		err = diskLog.Init(partitionDirName)
 		if err != nil {
 			goto failed
 		}
@@ -113,16 +114,16 @@ func (partitionList *PartitionList) Init(topicName string) error {
 		partitionDirName := path.Join(topicName, topicName+"-"+strconv.Itoa(i))
 		if _, err := os.Stat(partitionDirName); !os.IsNotExist(err) {
 			var partition Partition
-			var log disklog.DiskLog
+			var diskLog disklog.DiskLog
 
 			partition.dirName = partitionDirName
 
-			err = log.Init(partitionDirName)
+			err = diskLog.Init(partitionDirName)
 			if err != nil {
 				return err
 			}
 
-			partition.log = &log
+			partition.diskLog = &diskLog
 			partition.queue = make(chan []byte, 1024)
 			partitionList.partitions[i] = &partition
 		}
@@ -256,14 +257,14 @@ func (patitionList *PartitionList) SendDataToSock() {
 func (patitionList *PartitionList) StartWorker() {
 	for idx, value := range patitionList.partitions {
 		go func(idx int, partition *Partition) {
-			fmt.Printf("goroutine start for partition: [%s].\n", partition.dirName)
+			log.Printf("goroutine start for partition: [%s].\n", partition.dirName)
 			for {
 				messageBytes := <-partition.queue
-				dataWritten, err := partition.log.AppendBytes(messageBytes, len(messageBytes))
+				dataWritten, err := partition.diskLog.AppendBytes(messageBytes, len(messageBytes))
 				if err != nil {
-					fmt.Println("append bytes to log failed:", err)
+					log.Errorln("append bytes to log failed:", err)
 				}
-				fmt.Printf("write [%d] bytes message to partition: [%s].\n", dataWritten, partition.dirName)
+				log.Printf("write [%d] bytes message to partition: [%s].\n", dataWritten, partition.dirName)
 			}
 		}(idx, value)
 	}
