@@ -313,7 +313,7 @@ func HandleLeaderChange(leaderChan <-chan bool) {
 		} else {
 			isController = false
 		}
-		log.Debugln("Leader: %t\n", leader)
+		log.Debugf("Leader: %t\n", leader)
 	}
 }
 

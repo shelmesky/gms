@@ -25,7 +25,7 @@ func main() {
 	flag.Parse()
 	Init()
 
-	log.SetLevel(log.InfoLevel)
+	log.SetLevel(log.TraceLevel)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGINT)
@@ -33,7 +33,7 @@ func main() {
 		for {
 			select {
 			case <-c:
-				log.Println("Server exit\n")
+				log.Warningln("Server exit\n")
 				os.Exit(1)
 			}
 		}

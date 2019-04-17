@@ -72,7 +72,7 @@ func Start() (chan struct{}, error) {
 				if err != nil {
 					log.Fatal(errors.Wrap(err, "KeepAliveOnce failed"))
 				}
-				log.Warningln("KeepAliveOnce:", keepResp.String())
+				log.Debugln("KeepAliveOnce:", keepResp.String())
 
 				time.Sleep(time.Second * 2)
 			}
