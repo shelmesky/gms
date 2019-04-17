@@ -25,6 +25,10 @@ func main() {
 	flag.Parse()
 	Init()
 
+	customFormatter := new(log.TextFormatter)
+	customFormatter.TimestampFormat = "2006-01-02 15:04:05.0000"
+	customFormatter.FullTimestamp = true
+	log.SetFormatter(customFormatter)
 	log.SetLevel(log.TraceLevel)
 
 	c := make(chan os.Signal, 1)
