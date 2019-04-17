@@ -246,11 +246,55 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		nodeParRepList[idx].TopicName = topicInfo.TopicName
 	}
 
+	getPartitionReplicaInfo := func(partitionIndex, replicaIndex int) (string, error) {
+		var ret string
+		var item *rpc.NodePartitionReplicaInfo
+
+		for idx := range nodeParRepList {
+			item = nodeParRepList[idx]
+			if item.PartitionIndex == partitionIndex && item.ReplicaIndex == replicaIndex {
+				break
+			}
+		}
+
+		if item != nil {
+			bytes, err := json.Marshal(item)
+			if err != nil {
+				return "", fmt.Errorf("json marshal failed:", err)
+			}
+
+			ret = string(bytes)
+		} else {
+			return "", fmt.Errorf("can not find correct partition and replica index")
+		}
+
+		return ret, nil
+	}
+
 	/*
-		在etcd的/topics-brokers/topicName-0这个key下保存topic名字为topicName， 分区序号为0的分区信息。
+		在etcd的/topics-brokers/topicName/Partition-0/Replica-0这个key之中，
+		保存topic名字为topicName， 分区序号为0的分区信息。
 		value保存的信息是这个分区对应的所有副本的信息
 		例如key为topicName-0， value为common.NodePartitionReplicaInfo结构列表.
 	*/
+	topicNamePrefix := fmt.Sprintf("/topcis-brokers/%s", topicInfo.TopicName)
+	for i := 0; i < int(topicInfo.PartitionCount); i++ {
+		partitionPrefix := fmt.Sprintf("%s/partition-%d", topicNamePrefix, i)
+		for j := 0; j < int(topicInfo.ReplicaCount); j++ {
+			key := fmt.Sprintf("%s/replica-%d", partitionPrefix, j)
+			value, err := getPartitionReplicaInfo(i, j)
+			if err != nil {
+				log.Println("getPartitionReplicaInfo() failed:", err)
+				continue
+			}
+
+			_, err = kv.Put(context.Background(), key, value)
+			if err != nil {
+				log.Println("kv.Put() failed:", err)
+				continue
+			}
+		}
+	}
 
 	return nil
 }

@@ -15,7 +15,7 @@ var (
 	listenPort       = flag.Int("port", 50051, "server listen port")
 	rpcListenAddress = flag.String("rpc-address", "0.0.0.0", "rpc server listen address")
 	rpcListenPort    = flag.Int("rpc-port", 50052, "rpc server listen port")
-	nodeID           = flag.String("node-id", "node-1", "ID of current node")
+	nodeID           = flag.String("node-id", "node-0", "ID of current node")
 	dataDir          = flag.String("data-dir", "./data", "local data dir")
 	etcdServer       = flag.String("etcd-server", "127.0.0.1:2379", "etcd server")
 	ipAddress        = flag.String("ipaddress", "127.0.0.1", "ip address for communication")
