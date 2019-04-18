@@ -89,26 +89,22 @@ func RPCHandleConnection(conn *net.TCPConn) {
 
 			reply, err = createTopic(&nodeParRepInfo)
 			if err != nil {
+				log.Warningln("RPCHandleConnection() createTopic() failed:", err)
+				err = conn.Close()
 				if err != nil {
-					log.Warningln("RPCHandleConnection() createTopic() failed:", err)
-					err = conn.Close()
-					if err != nil {
-						log.Errorln("RPCHandleConnection() close connection failed:", err)
-					}
-					break
+					log.Errorln("RPCHandleConnection() close connection failed:", err)
 				}
+				break
 			}
 
 			err = encoder.Encode(reply)
 			if err != nil {
+				log.Warningln("RPCHandleConnection() Encode() failed:", err)
+				err = conn.Close()
 				if err != nil {
-					log.Warningln("RPCHandleConnection() Encode() failed:", err)
-					err = conn.Close()
-					if err != nil {
-						log.Errorln("RPCHandleConnection() close connection failed:", err)
-					}
-					break
+					log.Errorln("RPCHandleConnection() close connection failed:", err)
 				}
+				break
 			}
 		}
 	}
