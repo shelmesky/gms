@@ -15,8 +15,6 @@ import (
 	"io"
 	"math"
 	"net"
-	"net/http"
-	irpc "net/rpc"
 	"os"
 	"strconv"
 )
@@ -356,7 +354,7 @@ func readMessage(client *Client, topicName, partitionIndex string, target, count
 }
 
 // 解析客户端的请求， 发挥request结构， action结构， 和body数据
-func parseRequest(data []byte) (*common.RequestHeader, interface{}, interface{}) {
+func ParseRequest(data []byte) (*common.RequestHeader, interface{}, interface{}) {
 	// 读取固定长读的Request头部
 	requestStartPos := 0
 	requestEndPos := common.REQUEST_LEN
@@ -470,7 +468,7 @@ func HandleConnection(client *Client) {
 			break
 		}
 
-		request, actionInterface, bodyInterface := parseRequest(buffer)
+		request, actionInterface, bodyInterface := ParseRequest(buffer)
 		switch action := actionInterface.(type) {
 
 		case *common.WriteMessageAction:
@@ -508,27 +506,20 @@ func StartServer(listener *net.TCPListener) {
 }
 
 func RunRPC(address string, port int) {
-	internalRPC := new(rpc.InternalRPC)
-	err := irpc.Register(internalRPC)
+	addr := &net.TCPAddr{net.ParseIP(address), port, ""}
+	listener, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		log.Println("rpc server register handler failed:", err)
-		os.Exit(1)
-	}
-	irpc.HandleHTTP()
-
-	portStr := strconv.Itoa(port)
-	target := address + ":" + portStr
-	listen, err := net.Listen("tcp", target)
-
-	if err != nil {
-		log.Println("rpc server listen failed:", err)
-		os.Exit(1)
+		log.Fatalf("failed to listen: %v", err)
 	}
 
-	err = http.Serve(listen, nil)
-	if err != nil {
-		log.Println("rpc server start failed:", err)
-		os.Exit(1)
+	for {
+		conn, err := listener.AcceptTCP()
+		if err != nil {
+			log.Errorln("Accept() failed:", err)
+			continue
+		}
+
+		go rpc.RPCHandleConnection(conn)
 	}
 }
 

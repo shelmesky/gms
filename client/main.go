@@ -268,7 +268,7 @@ func main() {
 	} else if *action == "read" {
 		ReadMessage(tcpConn, "mytopic", "0", 1, 5)
 	} else if *action == "createTopic" {
-		CreateTopic(tcpConn, "mytopic", 3, 3)
+		CreateTopic(tcpConn, "testtopic", 3, 3)
 	} else {
 		fmt.Println("action is not support!")
 		os.Exit(1)

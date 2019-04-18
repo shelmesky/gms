@@ -303,6 +303,19 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		}
 	}
 
+	// 将创建topic和分区的信息发给所有节点
+	for idx := range nodeParRepList {
+		item := nodeParRepList[idx]
+		nodeIndex := item.NodeIndex
+		node := nodeList[nodeIndex]
+		err := rpc.SendCreatTopic(node.IPAddress, node.RPCPort, *item)
+		if err != nil {
+			log.Errorf("call SendCreatTopic() with address [%s:%d] failed: %s\n",
+				node.IPAddress, node.RPCPort, err.Error())
+			return err
+		}
+	}
+
 	return nil
 }
 

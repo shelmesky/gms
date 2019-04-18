@@ -4,6 +4,10 @@ var (
 	GlobalConfig *Config
 )
 
+const (
+	VERSION = 1000
+)
+
 func init() {
 	GlobalConfig = new(Config)
 }
