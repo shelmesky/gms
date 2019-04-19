@@ -47,7 +47,6 @@ type NodePartitionReplicaInfo struct {
 func RPCHandleConnection(conn *net.TCPConn) {
 	var request RPCRequest
 	var err error
-	var reply RPCReply
 
 	log.Debugf("RPCHandleConnection() got client: %v\n", conn.RemoteAddr())
 
@@ -68,73 +67,99 @@ func RPCHandleConnection(conn *net.TCPConn) {
 
 		// 集群内的同步请求
 		if request.Action == SYNC {
+			err = RPCHandle_SYNC(encoder, decoder, conn)
 		}
 
 		// controller发送来的设置SYNC信息的请求
 		if request.Action == SET_SYNC {
-			var reply RPCReply
-			var setSyncInfo SetSYNCInfo
-
-			err := decoder.Decode(&setSyncInfo)
-			if err != nil {
-				log.Warningln("RPCHandleConnection() decode failed:", err)
-				err = conn.Close()
-				if err != nil {
-					log.Errorln("RPCHandleConnection() close connection failed:", err)
-				}
-				break
-			}
-
-			log.Println("got set sync info:", setSyncInfo)
-
-			reply.Code = 0
-			reply.Result = "OK"
-			err = encoder.Encode(reply)
-			if err != nil {
-				log.Warningln("RPCHandleConnection() Encode() failed:", err)
-				err = conn.Close()
-				if err != nil {
-					log.Errorln("RPCHandleConnection() close connection failed:", err)
-				}
-				break
-			}
+			err = RPCHandle_SET_SYNC(encoder, decoder, conn)
 		}
 
 		// controller发送来的创建topic的请求
 		if request.Action == CREATE_TOPIC {
-			var nodeParRepInfo NodePartitionReplicaInfo
-			err = decoder.Decode(&nodeParRepInfo)
+			err = RPCHandle_CREATE_TOPIC(encoder, decoder, conn)
+		}
 
-			if err != nil {
-				log.Warningln("RPCHandleConnection() decode failed:", err)
-				err = conn.Close()
-				if err != nil {
-					log.Errorln("RPCHandleConnection() close connection failed:", err)
-				}
-				break
-			}
-
-			reply, err = createTopic(&nodeParRepInfo)
-			if err != nil {
-				log.Warningln("RPCHandleConnection() createTopic() failed:", err)
-				err = conn.Close()
-				if err != nil {
-					log.Errorln("RPCHandleConnection() close connection failed:", err)
-				}
-				break
-			}
-
-			err = encoder.Encode(reply)
-			if err != nil {
-				log.Warningln("RPCHandleConnection() Encode() failed:", err)
-				err = conn.Close()
-				if err != nil {
-					log.Errorln("RPCHandleConnection() close connection failed:", err)
-				}
-				break
-			}
+		if err != nil {
+			log.Errorf("")
+			break
 		}
 	}
+}
+
+func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
+
+	return nil
+}
+
+func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
+	var reply RPCReply
+	var setSyncInfo SetSYNCInfo
+
+	err := decoder.Decode(&setSyncInfo)
+	if err != nil {
+		log.Warningln("RPCHandleConnection() decode failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		}
+		return err
+	}
+
+	log.Println("got set sync info:", setSyncInfo)
+
+	reply.Code = 0
+	reply.Result = "OK"
+	err = encoder.Encode(reply)
+	if err != nil {
+		log.Warningln("RPCHandleConnection() Encode() failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func RPCHandle_CREATE_TOPIC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
+	var nodeParRepInfo NodePartitionReplicaInfo
+	var err error
+	var reply RPCReply
+
+	err = decoder.Decode(&nodeParRepInfo)
+
+	if err != nil {
+		log.Warningln("RPCHandleConnection() decode failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		}
+		return err
+	}
+
+	reply, err = createTopic(&nodeParRepInfo)
+	if err != nil {
+		log.Warningln("RPCHandleConnection() createTopic() failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		}
+		return err
+	}
+
+	err = encoder.Encode(reply)
+	if err != nil {
+		log.Warningln("RPCHandleConnection() Encode() failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		}
+		return err
+	}
+
+	return nil
 }
 
 func createTopic(arg *NodePartitionReplicaInfo) (RPCReply, error) {
