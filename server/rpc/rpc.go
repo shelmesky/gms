@@ -203,7 +203,7 @@ type SetSYNCInfo struct {
 // list中保存的是etcd中topic的列表
 // 根据分区x副本的数量得到所有副本列表
 // 再将这些信息通知需要向副本leader同步的节点
-func SendSYNCInfo(topicList []*mvccpb.KeyValue) error {
+func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 	var topic common.Topic
 	var err error
 

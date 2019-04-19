@@ -87,7 +87,7 @@ func ProcessTopics(topicName string) error {
 
 	log.Printf("ProcessTopics() got [%d] topics from etcd.", len(getResp.Kvs))
 
-	err = rpc.SendSYNCInfo(getResp.Kvs)
+	err = rpc.SendSYNCSet(getResp.Kvs)
 	if err != nil {
 		return fmt.Errorf("call SendSYNCInfo() failed: %s\n", err.Error())
 	}
