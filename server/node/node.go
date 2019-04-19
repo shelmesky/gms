@@ -11,15 +11,6 @@ import (
 	"time"
 )
 
-// 保存在etcd中的Node信息
-type Node struct {
-	IPAddress string `json:"ip_address"`
-	Port      int    `json:"port"`
-	RPCPort   int    `json:"rpc_port"`
-	NodeID    string `json:"node_id"`
-	StartTime int64  `json:"start_time"`
-}
-
 func Start() (chan struct{}, error) {
 	var err error
 	var stopChan chan struct{}
@@ -83,7 +74,7 @@ func Start() (chan struct{}, error) {
 }
 
 func getNodeInfo() string {
-	var nodeInfo Node
+	var nodeInfo common.Node
 	nodeInfo.IPAddress = common.GlobalConfig.IPAddress
 	nodeInfo.Port = common.GlobalConfig.ListenPort
 	nodeInfo.RPCPort = common.GlobalConfig.RPCListenPort

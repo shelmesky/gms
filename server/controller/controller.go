@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
-	"github.com/shelmesky/gms/server/node"
 	"github.com/shelmesky/gms/server/rpc"
 
 	//	"github.com/shelmesky/gms/server/server"
@@ -53,7 +52,44 @@ func Start() {
 	go WatchBrokers()
 	go WatchTopics()
 
+	go ProcessTopics()
+
 	//cancel()
+}
+
+// controller节点启动后读取etcd中的topic列表
+// 并告诉每个节点需要同步的副本leader
+func ProcessTopics() error {
+	var err error
+
+	// 使用新的etcd连接
+	client, err = etcd.New(etcd.Config{
+		Endpoints: []string{common.GlobalConfig.EtcdServer},
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "ProcessTopics() connect to etcd failed")
+	}
+
+	kv := clientv3.NewKV(client)
+
+	allNodeKey := "/topics/"
+	getResp, err := kv.Get(context.Background(), allNodeKey, clientv3.WithPrefix())
+
+	if err != nil {
+		return fmt.Errorf("ProcessTopics() %s: get %s from etcd failed\n", err, allNodeKey)
+	}
+
+	log.Printf("ProcessTopics() got [%d] topics from etcd.", len(getResp.Kvs))
+
+	err = rpc.SendSYNCInfo(getResp.Kvs)
+	if err != nil {
+		return fmt.Errorf("call SendSYNCInfo() failed: %s\n", err.Error())
+	}
+
+	log.Printf("call SendSYNCInfo() send [%d] topics SYNC info to nodes.", len(getResp.Kvs))
+
+	return nil
 }
 
 // 监听/brokers/id/目录的变化并处理，例如新增或删除
@@ -208,12 +244,12 @@ func ControllerSendCreateTopic(key, value []byte) error {
 	}
 
 	// 保存所有node的列表和map
-	var nodeList []*node.Node
-	var nodeMap map[string]*node.Node
-	nodeMap = make(map[string]*node.Node)
+	var nodeList []*common.Node
+	var nodeMap map[string]*common.Node
+	nodeMap = make(map[string]*common.Node)
 
 	for i := 0; i < nodeNum; i++ {
-		nodeInfo := new(node.Node)
+		nodeInfo := new(common.Node)
 		err = json.Unmarshal(getResp.Kvs[i].Value, nodeInfo)
 		if err == nil {
 			nodeList = append(nodeList, nodeInfo)
@@ -284,7 +320,7 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		value保存的信息是这个分区对应的所有副本的信息
 		例如key为topicName-0， value为common.NodePartitionReplicaInfo结构列表.
 	*/
-	topicNamePrefix := fmt.Sprintf("/topcis-brokers/%s", topicInfo.TopicName)
+	topicNamePrefix := fmt.Sprintf("/topics-brokers/%s", topicInfo.TopicName)
 	for i := 0; i < int(topicInfo.PartitionCount); i++ {
 		partitionPrefix := fmt.Sprintf("%s/partition-%d", topicNamePrefix, i)
 		for j := 0; j < int(topicInfo.ReplicaCount); j++ {

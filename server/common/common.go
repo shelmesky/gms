@@ -1,8 +1,13 @@
 package common
 
 import (
+	"context"
 	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
+	etcd "go.etcd.io/etcd/clientv3"
 	"io"
 	"net"
 	"unsafe"
@@ -348,4 +353,100 @@ func MessageToBytes(message *WriteMessageType) []byte {
 	}
 	data := *(*[]byte)(unsafe.Pointer(bytes))
 	return data
+}
+
+/************************************************************************/
+
+// 保存在etcd中的Node信息
+type Node struct {
+	IPAddress string `json:"ip_address"`
+	Port      int    `json:"port"`
+	RPCPort   int    `json:"rpc_port"`
+	NodeID    string `json:"node_id"`
+	StartTime int64  `json:"start_time"`
+}
+
+func ETCDGetKey(key string, withPrefix bool) (*etcd.GetResponse, error) {
+	var err error
+	var client *etcd.Client
+	var resp *etcd.GetResponse
+
+	// 使用新的etcd连接
+	client, err = etcd.New(etcd.Config{
+		Endpoints: []string{GlobalConfig.EtcdServer},
+	})
+
+	if err != nil {
+		err = errors.Wrap(err, "ETCDGetKeys() connect to etcd failed")
+		return resp, err
+	}
+
+	kv := etcd.NewKV(client)
+
+	if withPrefix {
+		resp, err = kv.Get(context.Background(), key, etcd.WithPrefix())
+	} else {
+		resp, err = kv.Get(context.Background(), key)
+	}
+
+	if err != nil {
+		err = fmt.Errorf("ETCDGetKeys() %s: get %s from etcd failed\n", err, key)
+		return resp, err
+	}
+
+	return resp, nil
+}
+
+// 获取etcd中所有节点的列表
+func GetAllNodes() ([]Node, error) {
+	var nodeList []Node
+	var err error
+
+	key := "/brokers/ids/"
+	getResp, err := ETCDGetKey(key, true)
+	if err != nil {
+		return nodeList, err
+	}
+
+	if len(getResp.Kvs) == 0 {
+		return nodeList, fmt.Errorf("get empty node list from etcd")
+	}
+
+	for idx := range getResp.Kvs {
+		var tempNode Node
+		kv := getResp.Kvs[idx]
+		valueBytes := kv.Value
+		err = json.Unmarshal(valueBytes, &tempNode)
+		if err != nil {
+			return nodeList, err
+		}
+		nodeList = append(nodeList, tempNode)
+	}
+
+	return nodeList, nil
+}
+
+func GetSingleNode(nodeID string) (Node, error) {
+	var tempNode Node
+	var err error
+
+	key := fmt.Sprintf("/brokers/ids/%s", nodeID)
+	getResp, err := ETCDGetKey(key, true)
+
+	if err != nil {
+		return tempNode, err
+	}
+
+	if len(getResp.Kvs) == 0 {
+		return tempNode, fmt.Errorf("can not find node [%s] in etcd\n", nodeID)
+	}
+
+	kv := getResp.Kvs[0]
+	valueBytes := kv.Value
+	err = json.Unmarshal(valueBytes, &tempNode)
+	if err != nil {
+		return tempNode, err
+	}
+
+	return tempNode, nil
 }
