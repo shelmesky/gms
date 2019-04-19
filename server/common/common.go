@@ -24,9 +24,10 @@ const (
 )
 
 const (
-	Write       = 1 // 写入类消息
-	Read        = 2 // 读取类消息
-	CreateTopic = 3 // 创建topic
+	Write          = 1 // 写入类消息
+	Read           = 2 // 读取类消息
+	CreateTopic    = 3 // 创建topic
+	StartSyncTopic = 4 // 开始同步topic
 )
 
 /************************************************************************/
@@ -185,7 +186,7 @@ func ReadResponseHeader(conn *net.TCPConn) (*ResponseHeader, error) {
 // 客户端消息写入命令
 type WriteMessageAction struct {
 	Action          uint32
-	TopicName       [128]byte
+	TopicName       [TOPIC_NAME_LEN]byte
 	PartitionNumber [32]byte
 }
 
@@ -230,7 +231,7 @@ func NewWriteMessageAction(topicName, PartitionNumber string) []byte {
 // 客户端读取消息命令
 type ReadMessageAction struct {
 	Action          uint32
-	TopicName       [128]byte
+	TopicName       [TOPIC_NAME_LEN]byte
 	PartitionNumber [32]byte
 	TargetOffset    uint32
 	Count           uint32
@@ -280,7 +281,7 @@ func NewReadMessageAction(topicName, PartitionNumber string, targetOffset, count
 // 创建topic请求
 type CreateTopicAction struct {
 	Action         uint32
-	TopicName      [128]byte
+	TopicName      [TOPIC_NAME_LEN]byte
 	PartitionCount uint32
 	ReplicaCount   uint32
 }
@@ -449,4 +450,41 @@ func GetSingleNode(nodeID string) (Node, error) {
 	}
 
 	return tempNode, nil
+}
+
+/************************************************************************/
+
+type StartSyncTopicAction struct {
+	Action    uint32
+	TopicName [TOPIC_NAME_LEN]byte
+}
+
+func BytesToStartSyncTopicAction(data []byte) *StartSyncTopicAction {
+	var act *StartSyncTopicAction = *(**StartSyncTopicAction)(unsafe.Pointer(&data))
+	return act
+}
+
+func StartSyncTopicActionToBytes(action *StartSyncTopicAction) []byte {
+	length := unsafe.Sizeof(*action)
+	b := &Slice{
+		addr: uintptr(unsafe.Pointer(action)),
+		cap:  int(length),
+		len:  int(length),
+	}
+	data := *(*[]byte)(unsafe.Pointer(b))
+	return data
+}
+
+func NewStartSyncTopicAction(topicName string) []byte {
+	var action StartSyncTopicAction
+	action.Action = StartSyncTopic
+
+	if len(topicName) > TOPIC_NAME_LEN {
+		panic("topic name is too large")
+	}
+	for i := 0; i < len(topicName); i++ {
+		action.TopicName[i] = topicName[i]
+	}
+
+	return StartSyncTopicActionToBytes(&action)
 }

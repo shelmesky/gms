@@ -17,6 +17,7 @@ var (
 	action        = flag.String("action", "", "action need to do, default is empty")
 	serverAddress = flag.String("address", "127.0.0.1", "ip address of server")
 	serverPort    = flag.Int("port", 50051, "tcp port of server")
+	syncTopic     = flag.String("sync-topic", "all", "let controller send SET_SYNC to follower")
 )
 
 func CRC32(data []byte) {
@@ -244,6 +245,33 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 	}
 }
 
+func StartSyncTopic(conn *net.TCPConn, topicName string) {
+	//生成meta数据
+	metaData := common.NewStartSyncTopicAction(topicName)
+	// 生成body数据
+	bodyData := []byte{}
+
+	// 把request、meta、body数据合并保存在net.Buffers结构中
+	netBuffer, totalLength := common.NewRequest(metaData, bodyData)
+
+	// 使用writev系用调用发送数据
+	n, err := netBuffer.WriteTo(conn)
+	if uint64(n) != totalLength || err != nil {
+		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
+		if err = conn.Close(); err != nil {
+			logrus.Println("close socket failed:", err)
+		}
+	}
+
+	// 读取服务器返回的response
+	responseHeader, err := common.ReadResponseHeader(conn)
+	if err != nil {
+		logrus.Println("read response header failed:", err)
+	} else {
+		fmt.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
+	}
+}
+
 func main() {
 	flag.Parse()
 
@@ -263,12 +291,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	if *action == "write" {
+	if *action == "writeMessage" {
 		WriteMessage(tcpConn)
-	} else if *action == "read" {
+	} else if *action == "readMessage" {
 		ReadMessage(tcpConn, "mytopic", "0", 1, 5)
 	} else if *action == "createTopic" {
 		CreateTopic(tcpConn, "testtopic", 3, 3)
+	} else if *action == "startSync" {
+		StartSyncTopic(tcpConn, *syncTopic)
 	} else {
 		fmt.Println("action is not support!")
 		os.Exit(1)

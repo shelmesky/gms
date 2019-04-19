@@ -52,15 +52,16 @@ func Start() {
 	go WatchBrokers()
 	go WatchTopics()
 
-	go ProcessTopics()
-
 	//cancel()
 }
 
 // controller节点启动后读取etcd中的topic列表
 // 并告诉每个节点需要同步的副本leader
-func ProcessTopics() error {
+// topicName为all表明开始所有topic的同步
+// 否则为具体某个topic
+func ProcessTopics(topicName string) error {
 	var err error
+	var key string
 
 	// 使用新的etcd连接
 	client, err = etcd.New(etcd.Config{
@@ -73,11 +74,15 @@ func ProcessTopics() error {
 
 	kv := clientv3.NewKV(client)
 
-	allNodeKey := "/topics/"
-	getResp, err := kv.Get(context.Background(), allNodeKey, clientv3.WithPrefix())
+	if topicName == "all" {
+		key = "/topics/"
+	} else {
+		key = fmt.Sprintf("/topics/%s", topicName)
+	}
+	getResp, err := kv.Get(context.Background(), key, clientv3.WithPrefix())
 
 	if err != nil {
-		return fmt.Errorf("ProcessTopics() %s: get %s from etcd failed\n", err, allNodeKey)
+		return fmt.Errorf("ProcessTopics() %s: get %s from etcd failed\n", err, key)
 	}
 
 	log.Printf("ProcessTopics() got [%d] topics from etcd.", len(getResp.Kvs))

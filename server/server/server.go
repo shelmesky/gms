@@ -385,6 +385,10 @@ func ParseRequest(data []byte) (*common.RequestHeader, interface{}, interface{})
 	} else if actionNum == common.CreateTopic {
 		createTopicAction := common.BytesToCreateTopicAction(metaData)
 		return request, createTopicAction, nil
+
+	} else if actionNum == common.StartSyncTopic {
+		startSyncAction := common.BytesToStartSyncTopicAction(metaData)
+		return request, startSyncAction, nil
 	}
 
 	return request, nil, nil
@@ -439,10 +443,34 @@ func handleCreateTopicAction(client *Client, request *common.RequestHeader, acti
 
 	err = response.WriteTo(client.Conn)
 	if err != nil {
-		log.Printf("write data to [%s] failed: %s\n", err)
+		log.Printf("handleCreateTopicAction() write data to [%s] failed: %v\n", client.Conn.RemoteAddr(), err)
 	}
 
-	log.Println("got create topic request:", topicName, partitionCount, replicaCount)
+	log.Println("")
+}
+
+func handleStartSyncAction(client *Client, request *common.RequestHeader, action *common.StartSyncTopicAction) {
+	var response *common.Response
+
+	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
+	processTopicErr := controller.ProcessTopics(topicName)
+
+	if processTopicErr != nil {
+		response = common.NewResponse(1, "FAILED", []byte{})
+	}
+	response = common.NewResponse(0, "OK", []byte{})
+
+	err := response.WriteTo(client.Conn)
+	if err != nil {
+		log.Printf("handleStartSyncAction() write data to [%s] failed: %v\n", client.Conn.RemoteAddr(), err)
+		return
+	}
+
+	if processTopicErr != nil {
+		log.Printf("server start sync for topic [%s] failed: %s\n", topicName, processTopicErr.Error())
+	} else {
+		log.Printf("server start sync for topic [%s]\n", topicName)
+	}
 }
 
 func HandleConnection(client *Client) {
@@ -480,6 +508,9 @@ func HandleConnection(client *Client) {
 
 		case *common.CreateTopicAction:
 			go handleCreateTopicAction(client, request, action, nil)
+
+		case *common.StartSyncTopicAction:
+			go handleStartSyncAction(client, request, action)
 		}
 	}
 

@@ -75,7 +75,7 @@ func RPCHandleConnection(conn *net.TCPConn) {
 			var reply RPCReply
 			var setSyncInfo SetSYNCInfo
 
-			err := decoder.Decode(setSyncInfo)
+			err := decoder.Decode(&setSyncInfo)
 			if err != nil {
 				log.Warningln("RPCHandleConnection() decode failed:", err)
 				err = conn.Close()
@@ -298,7 +298,7 @@ func SendSYNCInfo(topicList []*mvccpb.KeyValue) error {
 					// 获取RPC响应结果
 					var reply RPCReply
 					decoder := gob.NewDecoder(conn)
-					err = decoder.Decode(reply)
+					err = decoder.Decode(&reply)
 					if err != nil {
 						err = conn.Close()
 						if err != nil {
