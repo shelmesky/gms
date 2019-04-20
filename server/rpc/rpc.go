@@ -54,14 +54,32 @@ func RPCHandleConnection(conn *net.TCPConn) {
 	encoder := gob.NewEncoder(conn)
 
 	for {
+		err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+		if err != nil {
+			log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
+			break
+		}
+
 		err = decoder.Decode(&request)
 
 		if err != nil {
-			log.Warningln("RPCHandleConnection() decode failed:", err)
-			err = conn.Close()
-			if err != nil {
-				log.Errorln("RPCHandleConnection() close connection failed:", err)
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				log.Println("RPCHandleConnection() read timeout:", err)
+				continue
+			} else {
+				log.Warningln("RPCHandleConnection() decode request failed:", err)
+				err = conn.Close()
+				if err != nil {
+					log.Errorln("RPCHandleConnection() close connection failed:", err)
+				}
+				break
 			}
+		}
+
+		// 如果正常读取数据，则取消超时限制
+		err = conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
 			break
 		}
 
@@ -70,18 +88,18 @@ func RPCHandleConnection(conn *net.TCPConn) {
 			err = RPCHandle_SYNC(encoder, decoder, conn)
 		}
 
-		// controller发送来的设置SYNC信息的请求
+		// controller发送的设置SYNC信息的请求
 		if request.Action == SET_SYNC {
 			err = RPCHandle_SET_SYNC(encoder, decoder, conn)
 		}
 
-		// controller发送来的创建topic的请求
+		// controller发送的创建topic的请求
 		if request.Action == CREATE_TOPIC {
 			err = RPCHandle_CREATE_TOPIC(encoder, decoder, conn)
 		}
 
 		if err != nil {
-			log.Errorf("")
+			log.Errorln("RPCHandleConnection() process action failed:", err)
 			break
 		}
 	}
@@ -96,14 +114,30 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 	var reply RPCReply
 	var setSyncInfo SetSYNCInfo
 
-	err := decoder.Decode(&setSyncInfo)
+	err := conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	if err != nil {
-		log.Warningln("RPCHandleConnection() decode failed:", err)
-		err = conn.Close()
-		if err != nil {
-			log.Errorln("RPCHandleConnection() close connection failed:", err)
+		return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
+	}
+
+	err = decoder.Decode(&setSyncInfo)
+
+	if err != nil {
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			return errors.Wrap(err, "RPCHandle_SET_SYNC() read timeout:")
+		} else {
+			log.Warningln("RPCHandle_SET_SYNC() decode SetSYNCInfo failed:", err)
+			err = conn.Close()
+			if err != nil {
+				log.Errorln("RPCHandle_SET_SYNC() close connection failed:", err)
+			}
+			return err
 		}
-		return err
+	}
+
+	// 如果正常读取数据，则取消超时限制
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
 	}
 
 	log.Println("got set sync info:", setSyncInfo)
@@ -112,10 +146,10 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 	reply.Result = "OK"
 	err = encoder.Encode(reply)
 	if err != nil {
-		log.Warningln("RPCHandleConnection() Encode() failed:", err)
+		log.Warningln("RPCHandle_SET_SYNC() Encode RPCReply failed:", err)
 		err = conn.Close()
 		if err != nil {
-			log.Errorln("RPCHandleConnection() close connection failed:", err)
+			log.Errorln("RPCHandle_SET_SYNC() close connection failed:", err)
 		}
 		return err
 	}
@@ -128,33 +162,45 @@ func RPCHandle_CREATE_TOPIC(encoder *gob.Encoder, decoder *gob.Decoder, conn *ne
 	var err error
 	var reply RPCReply
 
+	err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if err != nil {
+		return errors.Wrap(err, "RPCHandle_CREATE_TOPIC() SetReadDeadline failed:")
+	}
+
+
 	err = decoder.Decode(&nodeParRepInfo)
 
 	if err != nil {
-		log.Warningln("RPCHandleConnection() decode failed:", err)
+		log.Warningln("RPCHandle_CREATE_TOPIC() decode NodePartitionReplicaInfo failed:", err)
 		err = conn.Close()
 		if err != nil {
-			log.Errorln("RPCHandleConnection() close connection failed:", err)
+			log.Errorln("RPCHandle_CREATE_TOPIC() close connection failed:", err)
 		}
 		return err
 	}
 
+	// 如果正常读取数据，则取消超时限制
+	err = conn.SetReadDeadline(time.Time{})
+	if err != nil {
+		return errors.Wrap(err, "RPCHandle_CREATE_TOPIC() SetReadDeadline failed:")
+	}
+
 	reply, err = createTopic(&nodeParRepInfo)
 	if err != nil {
-		log.Warningln("RPCHandleConnection() createTopic() failed:", err)
+		log.Warningln("RPCHandle_CREATE_TOPIC() createTopic() failed:", err)
 		err = conn.Close()
 		if err != nil {
-			log.Errorln("RPCHandleConnection() close connection failed:", err)
+			log.Errorln("RPCHandle_CREATE_TOPIC() close connection failed:", err)
 		}
 		return err
 	}
 
 	err = encoder.Encode(reply)
 	if err != nil {
-		log.Warningln("RPCHandleConnection() Encode() failed:", err)
+		log.Warningln("RPCHandle_CREATE_TOPIC() Encode RPCReply failed:", err)
 		err = conn.Close()
 		if err != nil {
-			log.Errorln("RPCHandleConnection() close connection failed:", err)
+			log.Errorln("RPCHandle_CREATE_TOPIC() close connection failed:", err)
 		}
 		return err
 	}

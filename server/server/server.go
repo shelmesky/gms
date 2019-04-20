@@ -543,6 +543,8 @@ func RunRPC(address string, port int) {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
+	log.Println("RPC Server listen at", addr)
+
 	for {
 		conn, err := listener.AcceptTCP()
 		if err != nil {
@@ -560,6 +562,8 @@ func Run(address string, port int) {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
+
+	log.Println("GMS server listen at", addr)
 
 	StartNode()       // 注册节点
 	StartController() // 注册控制器
