@@ -49,6 +49,29 @@ func CreateFile(filename string, capacity int) error {
 	return os.ErrExist
 }
 
+// 内存中Index的一条记录
+type IndexRecord struct {
+	offset  int
+	filePos int
+}
+
+func FilenameToOffset(filename string) (int, error) {
+	return strconv.Atoi(filename)
+}
+
+func OffsetToFilename(offset int) string {
+	filename := strconv.Itoa(offset)
+	filenameLength := len(filename)
+	if filenameLength > FileNameLength {
+		filenameLength = FileNameLength
+	}
+	filename = strings.Repeat("0", FileNameLength-filenameLength) + filename
+	return filename
+}
+
+/**********************************************************/
+
+// 单个文件管理， 例如log或者index文件
 type FileSegment struct {
 	filename      string       // 文件名
 	size          int          // 文件大小
@@ -59,6 +82,7 @@ type FileSegment struct {
 	lock          sync.RWMutex // 写入锁
 }
 
+// 使用mmap方式打开文件
 func OpenFileSegment(filename string, flag int, capacity int, populate bool) (FileSegment, error) {
 	var logSegment FileSegment
 	var prot int
@@ -111,6 +135,7 @@ func (this *FileSegment) BufferHeader() *reflect.SliceHeader {
 	return (*reflect.SliceHeader)(unsafe.Pointer(&this.fileBuffer))
 }
 
+// 调用syscall.SYS_MSYNC， 强制将未提交的部分提交到磁盘
 func (this *FileSegment) Force() error {
 	this.lock.Lock()
 	defer this.lock.Unlock()
@@ -129,6 +154,7 @@ func (this *FileSegment) Force() error {
 	return nil
 }
 
+// 关闭mmap方式打开的文件
 func (this *FileSegment) Close() error {
 	err := syscall.Munmap(this.fileBuffer)
 	if err != nil {
@@ -137,6 +163,7 @@ func (this *FileSegment) Close() error {
 	return this.File.Close()
 }
 
+// 向单个文件中追加字节数据
 func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	if len(data) <= 0 {
 		return 0, utils.ZeroLengthError
@@ -158,18 +185,21 @@ func (this *FileSegment) AppendBytes(data []byte, length int) (int, error) {
 	return written_len, nil
 }
 
+// 向文件中追加一个uint32
 func (this *FileSegment) AppendUInt32(data uint32) (int, error) {
 	bs := make([]byte, 4)
 	binary.LittleEndian.PutUint32(bs, data)
 	return this.AppendBytes(bs, 4)
 }
 
+// 向文件中追加一个uint64
 func (this *FileSegment) AppendUInt64(data uint64) (int, error) {
 	bs := make([]byte, 8)
 	binary.LittleEndian.PutUint64(bs, data)
 	return this.AppendBytes(bs, 8)
 }
 
+// 从文件的指定位置读取指定长度的数据
 func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 	var result []byte
 
@@ -184,6 +214,7 @@ func (this *FileSegment) ReadBytes(pos int, length int) ([]byte, error) {
 	return this.fileBuffer[pos : pos+length], nil
 }
 
+// 从文件的指定位置读取一个uint32数字
 func (this *FileSegment) ReadUInt32(pos int) (uint32, error) {
 	bytesRead, err := this.ReadBytes(pos, 4)
 	if err != nil {
@@ -192,6 +223,7 @@ func (this *FileSegment) ReadUInt32(pos int) (uint32, error) {
 	return binary.LittleEndian.Uint32(bytesRead), nil
 }
 
+// 从文件的指定位置读取一个uint64数字
 func (this *FileSegment) ReadUInt64(pos int) (uint64, error) {
 	bytesRead, err := this.ReadBytes(pos, 8)
 	if err != nil {
@@ -200,39 +232,24 @@ func (this *FileSegment) ReadUInt64(pos int) (uint64, error) {
 	return binary.LittleEndian.Uint64(bytesRead), nil
 }
 
+// 返回当前文件的预设容量
 func (this *FileSegment) Capacity() int {
 	return this.size
 }
 
+// 返回目前文件已经写到哪个位置
 func (this *FileSegment) Used() int {
 	return this.dataWritten
 }
 
+// 返回文件目前剩余的容量
 func (this *FileSegment) Remain() int {
 	return this.size - this.dataWritten
 }
 
-// 内存中Index的一条记录
-type IndexRecord struct {
-	offset  int
-	filePos int
-}
+/**********************************************************/
 
-func FilenameToOffset(filename string) (int, error) {
-	return strconv.Atoi(filename)
-}
-
-func OffsetToFilename(offset int) string {
-	filename := strconv.Itoa(offset)
-	filenameLength := len(filename)
-	if filenameLength > FileNameLength {
-		filenameLength = FileNameLength
-	}
-	filename = strings.Repeat("0", FileNameLength-filenameLength) + filename
-	return filename
-}
-
-// Log和Index文件
+// 管理一对Log和Index文件
 type LogIndexSegment struct {
 	Log            FileSegment   // log文件
 	Index          FileSegment   // index文件
@@ -247,6 +264,7 @@ type LogIndexSegment struct {
 	lock           sync.RWMutex  // 读写锁
 }
 
+// 创建一对log和index文件
 func CreateLogIndexSegmentFile(filename string, logCapacity, indexCapacity int) error {
 	err := CreateFile(filename+".log", logCapacity)
 	if err != nil {
@@ -261,6 +279,7 @@ func CreateLogIndexSegmentFile(filename string, logCapacity, indexCapacity int) 
 	return nil
 }
 
+// 打开一对log和index文件
 func (this *LogIndexSegment) Open(filename string, writable bool, logCapacity,
 	indexCapacity int, populate bool) error {
 	var err error
@@ -336,6 +355,8 @@ func (this *LogIndexSegment) Close() error {
 	return nil
 }
 
+// 从log文件的第4个字节开始读取， 读一个uint32数， 即第一条log记录的size
+// 如果为0说明此log文件没有保存任何记录
 func (this *LogIndexSegment) ReallyNoLog() bool {
 	firstLogSize, err := this.Log.ReadUInt32(4)
 	if err != nil {
@@ -388,6 +409,7 @@ func (this *LogIndexSegment) LoadIndex() error {
 		}
 		pos += 4
 
+		// 下面的if代码块是检查是否读到了index文件的末尾， 以及如何修正
 		// 确保已经读取不止1条记录, 排除文件开始都为0的情况
 		if this.entrySize > 0 {
 			// 如果读取到的offset和messagePos都为0
@@ -399,7 +421,7 @@ func (this *LogIndexSegment) LoadIndex() error {
 				// 如已经读取了1条记录, 说明加上本次是连续两次记录为0, 要回退16个字节
 				// 如已经读取了大于1条即最少2条, 说明前一次读取是正常的, 则只要回退8字节
 				if this.entrySize == 1 {
-					// 当只有一条记录且offset和messagePos都为0的情况下
+					// 当index文件只有一条记录且offset和messagePos都为0的情况下
 					// 并不一定说明log文件没有记录
 					// 这里就需要读log文件的开始来确认
 					if this.ReallyNoLog() {
@@ -424,6 +446,7 @@ func (this *LogIndexSegment) LoadIndex() error {
 
 	if this.entrySize > 0 {
 		// 设置当前Index文件最后的offset和文件位置
+
 		this.currentOffset = lastOffset + 1
 
 		// 当index中的offset和message pos都为0, 但log文件中确实有消息的情况下
@@ -633,13 +656,11 @@ func (this *LogIndexSegment) AppendBytes(data []byte, length int) error {
 	return nil
 }
 
-// 管理partition对应目录下的所有文件
-type DiskLog struct {
-	dirName       string            // 目录名称
-	segments      []LogIndexSegment // 按照文件名排序的Segment
-	activeSegment LogIndexSegment   // 当前活动的Segment
-	activeFile    *baseFileInfo     // 当前活动的文件
+func (this *LogIndexSegment) GetCurrentOffset() int {
+	return this.currentOffset
 }
+
+/**********************************************************/
 
 type baseFileInfo struct {
 	baseFileName  string
@@ -682,6 +703,14 @@ func (list sortedFileList) Less(i, j int) bool {
 	return fileNameOffset_I < fileNameOffset_J
 }
 
+// 管理partition对应目录下的所有文件
+type DiskLog struct {
+	dirName       string            // 目录名称
+	segments      []LogIndexSegment // 按照文件名排序的Segment
+	activeSegment LogIndexSegment   // 当前活动的Segment
+	activeFile    *baseFileInfo     // 当前活动的文件
+}
+
 func (log *DiskLog) getFullPath(filename string) string {
 	return path.Join(log.dirName, filename)
 }
@@ -692,6 +721,10 @@ func (log *DiskLog) GetSegment(pos int) (*LogIndexSegment, error) {
 	}
 
 	return &log.segments[pos], nil
+}
+
+func (log *DiskLog) GetActiveSegment() *LogIndexSegment {
+	return &log.activeSegment
 }
 
 func (log *DiskLog) SegmentLength() int {

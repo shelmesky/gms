@@ -20,6 +20,32 @@ const (
 	CREATE_TOPIC = 1
 )
 
+var (
+	syncManager *SYNCManager
+)
+
+type SYNCManager struct {
+	ClientMap map[string]chan interface{}
+}
+
+func (this *SYNCManager) makeKey(topicName string, partitionIndex int) string {
+	partIdxStr := strconv.Itoa(partitionIndex)
+	return topicName + "-" + partIdxStr
+}
+
+func (this *SYNCManager) Set(syncInfo SetSYNCInfo, manageChan chan interface{}) {
+
+}
+
+func (this *SYNCManager) Get(syncInfo SetSYNCInfo) chan interface{} {
+	var ret chan interface{}
+	return ret
+}
+
+func (this *SYNCManager) IsExist(syncInfo SetSYNCInfo) bool {
+	return false
+}
+
 // 所有RPC服务的请求头
 type RPCRequest struct {
 	Action   int
@@ -42,6 +68,10 @@ type NodePartitionReplicaInfo struct {
 	PartitionIndex int    `json:"partition_index"`
 	ReplicaIndex   int    `json:"replica_index"`
 	IsLeader       bool   `json:"is_leader"`
+}
+
+func init() {
+	syncManager = new(SYNCManager)
 }
 
 func RPCHandleConnection(conn *net.TCPConn) {
@@ -106,6 +136,15 @@ func RPCHandleConnection(conn *net.TCPConn) {
 }
 
 func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
+	var syncLeader SyncLeader
+
+	err := decoder.Decode(&syncLeader)
+	if err != nil {
+		err = errors.Wrap(err, "RPCHandle_SYNC() Decode failed")
+		return err
+	}
+
+	log.Debugln("RPCHandle_SYNC() receive SyncLeader:", syncLeader)
 
 	return nil
 }
@@ -140,10 +179,25 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 		return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
 	}
 
-	log.Println("got set sync info:", setSyncInfo)
+	log.Println("RPCHandle_SET_SYNC() got set sync info:", setSyncInfo)
+	manageChan := FollowerStartSync(setSyncInfo)
 
-	reply.Code = 0
-	reply.Result = "OK"
+	value := <-manageChan
+	if errTemp, ok := value.(error); ok {
+		err = errTemp
+	} else {
+		err = nil
+	}
+
+	if err != nil {
+		reply.Code = 1
+		reply.Result = fmt.Sprintf("RPCHandle_SET_SYNC() start sync for [%v] failed: %s\n",
+			setSyncInfo, err.Error())
+	} else {
+		reply.Code = 0
+		reply.Result = "OK"
+	}
+
 	err = encoder.Encode(reply)
 	if err != nil {
 		log.Warningln("RPCHandle_SET_SYNC() Encode RPCReply failed:", err)
@@ -166,7 +220,6 @@ func RPCHandle_CREATE_TOPIC(encoder *gob.Encoder, decoder *gob.Decoder, conn *ne
 	if err != nil {
 		return errors.Wrap(err, "RPCHandle_CREATE_TOPIC() SetReadDeadline failed:")
 	}
-
 
 	err = decoder.Decode(&nodeParRepInfo)
 
@@ -296,7 +349,7 @@ func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 			key := fmt.Sprintf("/topics-brokers/%s/partition-%d/", topic.TopicName, i)
 			getResp, err := common.ETCDGetKey(key, true)
 			if err != nil {
-				return errors.Wrap(err, "SendSYNCInfo() call ETCDGetKey() failed")
+				return errors.Wrap(err, "SendSYNCSet() call ETCDGetKey() failed")
 			}
 
 			// 找到副本列表中的leader，并将leader副本的信息发送给此分区的其他副本节点
@@ -352,7 +405,7 @@ func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 					if err != nil {
 						err = conn.Close()
 						if err != nil {
-							log.Errorln("SendSYNCInfo() close connection failed:", err)
+							log.Errorln("SendSYNCSet() close connection failed:", err)
 						}
 						return err
 					}
@@ -361,7 +414,7 @@ func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 					if err != nil {
 						err = conn.Close()
 						if err != nil {
-							log.Errorln("SendSYNCInfo() close connection failed:", err)
+							log.Errorln("SendSYNCSet() close connection failed:", err)
 						}
 						return err
 					}
@@ -373,12 +426,12 @@ func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 					if err != nil {
 						err = conn.Close()
 						if err != nil {
-							log.Errorln("SendSYNCInfo() close connection failed:", err)
+							log.Errorln("SendSYNCSet() close connection failed:", err)
 						}
 						return err
 					}
 
-					log.Debugln("got reply from rpc server:", reply)
+					log.Debugln("SendSYNCSet() got reply from rpc server:", reply)
 				}
 			}
 		}

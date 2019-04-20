@@ -66,7 +66,7 @@ func NewMessage(bodyKey, bodyValue []byte, netBuffer *net.Buffers) uint64 {
 }
 
 func WriteMessage(conn *net.TCPConn) {
-	topicName := "mytopic"
+	topicName := "testtopic"
 	partitionNum := "0"
 
 	var MetaData []byte
@@ -91,7 +91,7 @@ func WriteMessage(conn *net.TCPConn) {
 	request.BodyLength = uint32(totalBodyLength)
 
 	// 本次请求的总长度
-	request.TotalLength = common.REQUEST_LEN + uint64(request.MetaDataLength) + totalBodyLength
+	request.TotalLength = 8 + common.REQUEST_LEN + uint64(request.MetaDataLength) + totalBodyLength
 	totalLengthBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(totalLengthBytes, request.TotalLength)
 
@@ -116,7 +116,7 @@ func WriteMessage(conn *net.TCPConn) {
 		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
 		return
 	} else {
-		fmt.Printf("written %d bytes\n", n)
+		fmt.Printf("written [totalLength, request, metadata] %d bytes\n", n)
 	}
 
 	// 发送N个消息
@@ -125,11 +125,11 @@ func WriteMessage(conn *net.TCPConn) {
 		fmt.Println("netbuffer.WriteTo failed:", err)
 		return
 	}
-	if uint32(n) != requestTotalLen {
+	if uint64(n) != totalBodyLength {
 		fmt.Printf("written length [%d] is too small than: [%d]\n", n, totalBodyLength)
 		return
 	} else {
-		fmt.Printf("written %d bytes\n", n)
+		fmt.Printf("written [body] %d bytes\n", n)
 	}
 }
 

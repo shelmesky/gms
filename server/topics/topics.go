@@ -1,9 +1,31 @@
 package topics
 
 import (
+	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/partition"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+	"os"
 )
+
+var (
+	TopicManager *Topics
+)
+
+func Init() {
+	if err := os.Chdir(common.GlobalConfig.DataDir); err != nil {
+		log.Errorln(err)
+		os.Exit(1)
+	}
+
+	var t Topics
+	err := t.Init()
+	if err != nil {
+		panic(err.Error())
+	}
+
+	TopicManager = &t
+}
 
 func CreateTopic(topicName string, numPartitions int) error {
 	return partition.CreatePartitionList(topicName, numPartitions)

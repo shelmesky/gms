@@ -89,10 +89,11 @@ func ProcessTopics(topicName string) error {
 
 	err = rpc.SendSYNCSet(getResp.Kvs)
 	if err != nil {
-		return fmt.Errorf("call SendSYNCInfo() failed: %s\n", err.Error())
+		return fmt.Errorf("ProcessTopics() call SendSYNCSet() failed: %s\n", err.Error())
 	}
 
-	log.Printf("call SendSYNCInfo() send [%d] topics SYNC info to nodes.", len(getResp.Kvs))
+	log.Printf("ProcessTopics() call SendSYNCSet() send topic [%s] with ETCD topics [%d] SYNC info to nodes.",
+		topicName, len(getResp.Kvs))
 
 	return nil
 }

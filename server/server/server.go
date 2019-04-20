@@ -19,24 +19,7 @@ import (
 	"strconv"
 )
 
-var (
-	topicManager *topics.Topics
-)
 
-func Init() {
-	if err := os.Chdir(common.GlobalConfig.DataDir); err != nil {
-		log.Errorln(err)
-		os.Exit(1)
-	}
-
-	var t topics.Topics
-	err := t.Init()
-	if err != nil {
-		panic(err.Error())
-	}
-
-	topicManager = &t
-}
 
 type SocketBuffer struct {
 	conn   *net.TCPConn
@@ -168,7 +151,7 @@ func getAction(metaData []byte) int {
 func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
 	if len(topicName) > 0 {
 		// 获取Topic对象
-		topic := topicManager.GetTopic(topicName)
+		topic := topics.TopicManager.GetTopic(topicName)
 
 		if topic != nil {
 			// 在名字对应的Topic中写入消息体
@@ -317,7 +300,7 @@ func readMessage(client *Client, topicName, partitionIndex string, target, count
 	// 必须提供长度大于0的topic名字
 	if len(topicName) > 0 {
 		// 根据名字获得topic对象
-		topic := topicManager.GetTopic(topicName)
+		topic := topics.TopicManager.GetTopic(topicName)
 
 		// 如果根据topic名字能找到Topic对象
 		if topic != nil {
@@ -568,7 +551,7 @@ func Run(address string, port int) {
 	StartNode()       // 注册节点
 	StartController() // 注册控制器
 
-	Init()              // 初始化数据目录
+	topics.Init()
 	StartServer(listen) // 启动服务
 }
 

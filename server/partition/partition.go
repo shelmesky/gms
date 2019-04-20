@@ -25,7 +25,7 @@ func Hash(data []byte) uint64 {
 }
 
 // 单个partition
-// 将为每个partition启动一个线程
+// 将为每个partition启动一个goroutine
 type Partition struct {
 	dirName string           // 目录名
 	diskLog *disklog.DiskLog // 日志管理器
@@ -36,12 +36,9 @@ func (p *Partition) GetLog() *disklog.DiskLog {
 	return p.diskLog
 }
 
-// 一组partition
-// 拥有同样的topicName
-type PartitionList struct {
-	topicName     string             // topic名
-	numPartitions int                // partition的数量
-	partitions    map[int]*Partition // 多个partition组成的map
+func (p *Partition) GetCurrentOffset() int {
+	activeSegment := p.diskLog.GetActiveSegment()
+	return activeSegment.GetCurrentOffset()
 }
 
 // 在目录下创建n个partition
@@ -96,6 +93,14 @@ success:
 	return nil
 }
 
+// 一组partition
+// 拥有同样的topicName
+type PartitionList struct {
+	topicName     string             // topic名
+	numPartitions int                // partition的数量
+	partitions    map[int]*Partition // 多个partition组成的map
+}
+
 func (partitionList *PartitionList) GetPartition(partitionIndex int) *Partition {
 	if value, ok := partitionList.partitions[partitionIndex]; ok {
 		return value
@@ -118,6 +123,7 @@ func (partitionList *PartitionList) Init(topicName string) error {
 
 			partition.dirName = partitionDirName
 
+			// log文件初始化
 			err = diskLog.Init(partitionDirName)
 			if err != nil {
 				return err
@@ -161,21 +167,25 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 		fmt.Printf("message key: %d %s, %v\n", len(KeyPayload), string(KeyPayload), KeyPayload)
 		fmt.Printf("message value: %d %s, %v\n", len(ValuePayload), string(ValuePayload), ValuePayload)
 
+		// 如果参数提供了想要写入的分区编号
 		if len(partitionIndex) > 0 {
 			selectedPartition, err = strconv.Atoi(partitionIndex)
 			if err != nil {
 				return err
 			}
 		} else {
+			// 如果参数未提供分区编号，则尝试根据key来hash，然后找到分区编号
 			if firstMessageHeader.KeyLength > 0 {
 				KeyPayload := body[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+firstMessageHeader.KeyLength]
 				keyHash := uint64(Hash(KeyPayload))
 				selectedPartition = int(keyHash % uint64(partitionList.numPartitions))
 			} else {
+				// 如果key也没有提供， 则在多个分区中随机
 				selectedPartition = rand.Int() % partitionList.numPartitions
 			}
 		}
 
+		// 如果在打开的topic列表中根据分区编号找到分区， 则将body写入到分区的worker chan
 		if partition, ok := partitionList.partitions[selectedPartition]; ok {
 			if partition != nil {
 				partition.queue <- body
@@ -249,11 +259,8 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 	return nil
 }
 
-// 发送消息到socket fd
-func (patitionList *PartitionList) SendDataToSock() {
-
-}
-
+// 为一个topic下的所有分区列表启动worker chan.
+// 当在磁盘上找到一个分区，即路径为topicxxx/topicxxx-0， 则会启动一个goroutine接收数据并写入到这个分区.
 func (patitionList *PartitionList) StartWorker() {
 	for idx, value := range patitionList.partitions {
 		go func(idx int, partition *Partition) {
