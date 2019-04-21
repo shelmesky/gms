@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/partition"
+	"github.com/shelmesky/gms/server/topics"
 	log "github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/mvcc/mvccpb"
 	"net"
@@ -84,11 +85,13 @@ func RPCHandleConnection(conn *net.TCPConn) {
 	encoder := gob.NewEncoder(conn)
 
 	for {
-		err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-		if err != nil {
-			log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
-			break
-		}
+		/*
+			err = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+			if err != nil {
+				log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
+				break
+			}
+		*/
 
 		err = decoder.Decode(&request)
 
@@ -106,12 +109,15 @@ func RPCHandleConnection(conn *net.TCPConn) {
 			}
 		}
 
-		// 如果正常读取数据，则取消超时限制
-		err = conn.SetReadDeadline(time.Time{})
-		if err != nil {
-			log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
-			break
-		}
+		/*
+			// 如果正常读取数据，则取消超时限制
+			err = conn.SetReadDeadline(time.Time{})
+			if err != nil {
+				log.Errorln("RPCHandleConnection() SetReadDeadline failed:", err)
+				break
+			}
+
+		*/
 
 		// 集群内的同步请求
 		if request.Action == SYNC {
@@ -137,6 +143,7 @@ func RPCHandleConnection(conn *net.TCPConn) {
 
 func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
 	var syncLeader SyncLeader
+	//var rpcReply RPCReply
 
 	err := decoder.Decode(&syncLeader)
 	if err != nil {
@@ -145,21 +152,44 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 	}
 
 	client := common.NewClient(conn)
-	log.Println("RPCHandle_SYNC() got new client", client)
+
+	partitionIndex := strconv.Itoa(syncLeader.PartitionIndex)
+	offset := uint32(syncLeader.Offset)
+	count := uint32(syncLeader.Count)
+
+	// 通过topic名称， 分区编号， 消息的offset和数量发送读取消息给客户端
+	// 这里并没有通过RPC的方式读取，而是直接将对应的文件内容通过sendfile系统调用发送
+	err = topics.ReadMessage(&client, syncLeader.TopicName, partitionIndex, offset, count)
+
+	/*	if err != nil {
+		fmt.Println("###################", err)
+		rpcReply.Code = 1
+		rpcReply.Result = err.Error()
+		err = encoder.Encode(rpcReply)
+		if err != nil {
+			log.Errorln(errors.Wrap(err, "RPCHandle_SYNC() Encode failed"))
+		}
+		fmt.Println("555555555555555555555555555555")
+		return err
+	}*/
 
 	log.Debugln("RPCHandle_SYNC() receive SyncLeader:", syncLeader)
 
 	return nil
+
 }
 
 func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
 	var reply RPCReply
 	var setSyncInfo SetSYNCInfo
+	var err error
 
-	err := conn.SetReadDeadline(time.Now().Add(5 * time.Second))
-	if err != nil {
-		return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
-	}
+	/*
+		err = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		if err != nil {
+			return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
+		}
+	*/
 
 	err = decoder.Decode(&setSyncInfo)
 
@@ -176,10 +206,31 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 		}
 	}
 
-	// 如果正常读取数据，则取消超时限制
-	err = conn.SetReadDeadline(time.Time{})
-	if err != nil {
-		return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
+	/*
+		// 如果正常读取数据，则取消超时限制
+		err = conn.SetReadDeadline(time.Time{})
+		if err != nil {
+			return errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:")
+		}
+	*/
+
+	// 检查参数是否提供
+	if len(setSyncInfo.TopicName) == 0 {
+		reply.Code = 1
+		errTemp := fmt.Errorf("RPCHandle_SET_SYNC() setSyncInfo topic is empty, syncinfo: [%v]\n", setSyncInfo)
+		reply.Result = errTemp.Error()
+
+		err = encoder.Encode(reply)
+		if err != nil {
+			log.Warningln("RPCHandle_SET_SYNC() Encode RPCReply failed:", err)
+			err = conn.Close()
+			if err != nil {
+				log.Errorln("RPCHandle_SET_SYNC() close connection failed:", err)
+			}
+			return err
+		}
+
+		return errTemp
 	}
 
 	log.Println("RPCHandle_SET_SYNC() got set sync info:", setSyncInfo)
@@ -193,7 +244,7 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 	}
 
 	if err != nil {
-		reply.Code = 1
+		reply.Code = 2
 		reply.Result = fmt.Sprintf("RPCHandle_SET_SYNC() start sync for [%v] failed: %s\n",
 			setSyncInfo, err.Error())
 	} else {
@@ -219,7 +270,7 @@ func RPCHandle_CREATE_TOPIC(encoder *gob.Encoder, decoder *gob.Decoder, conn *ne
 	var err error
 	var reply RPCReply
 
-	err = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	err = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	if err != nil {
 		return errors.Wrap(err, "RPCHandle_CREATE_TOPIC() SetReadDeadline failed:")
 	}

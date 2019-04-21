@@ -59,11 +59,11 @@ func Start() (chan struct{}, error) {
 			return
 		default:
 			for {
-				keepResp, err := lease.KeepAliveOnce(context.TODO(), leaseResp.ID)
+				_, err := lease.KeepAliveOnce(context.TODO(), leaseResp.ID)
 				if err != nil {
 					log.Fatal(errors.Wrap(err, "KeepAliveOnce failed"))
 				}
-				log.Debugln("KeepAliveOnce:", keepResp.String())
+				//log.Debugln("KeepAliveOnce:", keepResp.String())
 
 				time.Sleep(time.Second * 2)
 			}

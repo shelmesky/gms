@@ -6,6 +6,7 @@ import (
 	disklog "github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
 	"io"
+	"log"
 	"strconv"
 )
 
@@ -13,7 +14,7 @@ func SendFileToSocket(segment *disklog.LogIndexSegment, client *common.Client, p
 	_, err := segment.Log.File.Seek(pos, 0)
 	written, err := client.Conn.ReadFrom(io.LimitReader(segment.Log.File, length))
 	if written == 0 || err != nil {
-		err = client.Conn.Close()
+		//err = client.Conn.Close()
 		if err != nil {
 			return utils.CloseConnError
 		}
@@ -30,7 +31,7 @@ client: 客户端连接对象
 target: 开始读取的offset
 length: 希望读取几个消息
 */
-func BatchRead(diskLog *disklog.DiskLog, client *common.Client, target, length int) error {
+func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, length int) error {
 	var bytesRead int
 	var originPos int64
 
@@ -38,7 +39,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, target, length i
 	// 获取segment即对应的文件段对象
 	// segmentPos即文件段对象在所有segment list中的索引
 	// logFilePos即target offset在对应segment开始读取的位置
-	segmentPos, segment, logFilePos, err := diskLog.Search(target)
+	segmentPos, segment, logFilePos, err := diskLog.Search(targetOffset)
 	if err != nil {
 		return err
 	}
@@ -70,6 +71,10 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, target, length i
 
 	// 减去上面读取的一条记录
 	length -= 1
+
+	if length == 0 {
+		return nil
+	}
 
 	readCounter := 0
 
@@ -135,7 +140,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, target, length i
 	return nil
 }
 
-func ReadMessage(client *common.Client, topicName, partitionIndex string, target, count uint32) error {
+func ReadMessage(client *common.Client, topicName, partitionIndex string, targetOffset, count uint32) error {
 	// 必须提供长度大于0的topic名字
 	if len(topicName) > 0 {
 		// 根据名字获得topic对象
@@ -153,10 +158,20 @@ func ReadMessage(client *common.Client, topicName, partitionIndex string, target
 
 				// 根据partition序号找到Partition
 				partition := topic.GetPartition(partitionNum)
+
+				// 如果请求参数中的targetOffset和分区目前一样大
+				// 则返回错误
+				log.Printf("ReadMessage() targetOffset: [%d],  currentOffset: [%d]\n",
+					targetOffset, partition.GetCurrentOffset())
+				if int(targetOffset) > partition.GetCurrentOffset() {
+
+					return utils.OffsetBigError
+				}
+
 				// Partition的Log对象
 				Log := partition.GetLog()
 				// 使用Log对象批量读取消息
-				err = BatchRead(Log, client, int(target), int(count))
+				err = BatchRead(Log, client, int(targetOffset), int(count))
 
 				if err != nil {
 					return err

@@ -82,7 +82,7 @@ func WriteMessage(conn *net.TCPConn) {
 	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, partitionNum)
 
 	// 循环增加消息体
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 1; i++ {
 		key := []byte(fmt.Sprintf("key-%d", i))
 		value := []byte(fmt.Sprintf("value-%d", i))
 		totalBodyLength += NewMessage(key, value, &netBufferBody)
@@ -294,7 +294,7 @@ func main() {
 	if *action == "writeMessage" {
 		WriteMessage(tcpConn)
 	} else if *action == "readMessage" {
-		ReadMessage(tcpConn, "mytopic", "0", 1, 5)
+		ReadMessage(tcpConn, "testtopic", "0", 1, 5)
 	} else if *action == "createTopic" {
 		CreateTopic(tcpConn, "testtopic", 3, 3)
 	} else if *action == "startSync" {
