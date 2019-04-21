@@ -32,6 +32,9 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 		var syncLeader SyncLeader
 		var request RPCRequest
 		//var reply RPCReply
+		var conn net.Conn
+		var encoder *gob.Encoder
+		var err error
 
 		syncLeader.NodeID = common.GlobalConfig.NodeID
 		syncLeader.NodeAddress = common.GlobalConfig.IPAddress
@@ -47,18 +50,29 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 
 		targetLeader := info.Leader
 
-		// 连接到服务器， 获取发送SYNC命令
-		conn, err := net.DialTimeout("tcp", targetLeader, time.Second*5)
-		if err != nil {
-			err = errors.Wrap(err, "FollowerStartSync() dial failed")
-			manageChan <- err
-		}
+		connect := func() (net.Conn, *gob.Encoder, error) {
+			// 连接到服务器， 获取发送SYNC命令
+			conn, err := net.DialTimeout("tcp", targetLeader, time.Second*5)
+			if err != nil {
+				err = errors.Wrap(err, "FollowerStartSync() dial failed")
+				manageChan <- err
+			}
 
-		encoder := gob.NewEncoder(conn)
-		//decoder := gob.NewDecoder(conn)
+			encoder := gob.NewEncoder(conn)
+			//decoder := gob.NewDecoder(conn)
+
+			return conn, encoder, err
+		}
 
 		log.Println("FollowerStartSync() start working for", info)
 		manageChan <- nil
+
+		conn, encoder, err = connect()
+		if err != nil {
+			log.Errorln("connect to Leader server failed:", err)
+		}
+
+		needReconnect := false
 
 		for {
 			select {
@@ -73,6 +87,15 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 				}
 
 			default:
+				if needReconnect == true {
+					conn, encoder, err = connect()
+					if err != nil {
+						time.Sleep(2 * time.Second)
+						continue
+					}
+					needReconnect = false
+				}
+
 				// 找到partition
 				partitionObject := topic.GetPartition(info.PartitionIndex)
 
@@ -85,18 +108,19 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 				request.Version = common.VERSION
 
 				// 发送request
-				err = encoder.Encode(request)
+				err := encoder.Encode(request)
 
 				if err != nil {
 					log.Println("FollowerStartSync() Encode failed:", err)
 					err = conn.Close()
 					if err != nil {
-						log.Println("FollowerStartSync() close connection failed:", err)
-						err = errors.Wrap(err, "FollowerStartSync() close connection failed: %s\n")
+						err = errors.Wrap(err, "FollowerStartSync() close connection failed")
+						log.Errorln(err)
 						manageChan <- err
 					}
 
-					time.Sleep(2 * time.Second)
+					needReconnect = true
+
 					continue
 				}
 
@@ -106,12 +130,13 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 					log.Println("FollowerStartSync() Encode failed:", err)
 					err = conn.Close()
 					if err != nil {
-						log.Println("FollowerStartSync() close connection failed:", err)
 						err = errors.Wrap(err, "FollowerStartSync() close connection failed:")
+						log.Errorln(err)
 						manageChan <- err
 					}
 
-					time.Sleep(2 * time.Second)
+					needReconnect = true
+
 					continue
 				}
 
@@ -144,7 +169,7 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 					offsetBuf := make([]byte, 4)
 					lengthBuf := make([]byte, 4)
 
-					err = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+					err := conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 					if err != nil {
 						log.Println(errors.Wrap(err, "RPCHandle_SET_SYNC() SetReadDeadline failed:"))
 						break

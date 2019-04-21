@@ -5,8 +5,8 @@ import (
 	"github.com/shelmesky/gms/server/common"
 	disklog "github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
+	log "github.com/sirupsen/logrus"
 	"io"
-	"log"
 	"strconv"
 )
 
@@ -161,7 +161,7 @@ func ReadMessage(client *common.Client, topicName, partitionIndex string, target
 
 				// 如果请求参数中的targetOffset和分区目前一样大
 				// 则返回错误
-				log.Printf("ReadMessage() targetOffset: [%d],  currentOffset: [%d]\n",
+				log.Debugf("ReadMessage() targetOffset: [%d],  currentOffset: [%d]\n",
 					targetOffset, partition.GetCurrentOffset())
 				if int(targetOffset) > partition.GetCurrentOffset() {
 
