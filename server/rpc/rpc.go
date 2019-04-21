@@ -144,6 +144,9 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 		return err
 	}
 
+	client := common.NewClient(conn)
+	log.Println("RPCHandle_SYNC() got new client", client)
+
 	log.Debugln("RPCHandle_SYNC() receive SyncLeader:", syncLeader)
 
 	return nil
