@@ -21,32 +21,6 @@ const (
 	CREATE_TOPIC = 1
 )
 
-var (
-	syncManager *SYNCManager
-)
-
-type SYNCManager struct {
-	ClientMap map[string]chan interface{}
-}
-
-func (this *SYNCManager) makeKey(topicName string, partitionIndex int) string {
-	partIdxStr := strconv.Itoa(partitionIndex)
-	return topicName + "-" + partIdxStr
-}
-
-func (this *SYNCManager) Set(syncInfo SetSYNCInfo, manageChan chan interface{}) {
-
-}
-
-func (this *SYNCManager) Get(syncInfo SetSYNCInfo) chan interface{} {
-	var ret chan interface{}
-	return ret
-}
-
-func (this *SYNCManager) IsExist(syncInfo SetSYNCInfo) bool {
-	return false
-}
-
 // 所有RPC服务的请求头
 type RPCRequest struct {
 	Action   int
@@ -69,10 +43,6 @@ type NodePartitionReplicaInfo struct {
 	PartitionIndex int    `json:"partition_index"`
 	ReplicaIndex   int    `json:"replica_index"`
 	IsLeader       bool   `json:"is_leader"`
-}
-
-func init() {
-	syncManager = new(SYNCManager)
 }
 
 func RPCHandleConnection(conn *net.TCPConn) {
@@ -142,10 +112,10 @@ func RPCHandleConnection(conn *net.TCPConn) {
 }
 
 func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
-	var syncLeader SyncLeader
+	var follower Follower
 	//var rpcReply RPCReply
 
-	err := decoder.Decode(&syncLeader)
+	err := decoder.Decode(&follower)
 	if err != nil {
 		err = errors.Wrap(err, "RPCHandle_SYNC() Decode failed")
 		return err
@@ -153,13 +123,17 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 
 	client := common.NewClient(conn)
 
-	partitionIndex := strconv.Itoa(syncLeader.PartitionIndex)
-	offset := uint32(syncLeader.Offset)
-	count := uint32(syncLeader.Count)
+	partitionIndex := strconv.Itoa(follower.PartitionIndex)
+	offset := uint32(follower.Offset)
+	count := uint32(follower.Count)
 
 	// 通过topic名称， 分区编号， 消息的offset和数量发送读取消息给客户端
 	// 这里并没有通过RPC的方式读取，而是直接将对应的文件内容通过sendfile系统调用发送
-	err = topics.ReadMessage(&client, syncLeader.TopicName, partitionIndex, offset, count)
+	err = topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count)
+	if err == nil {
+		err = GlobalFollowerManager.PutOffset(follower)
+		log.Errorln("GlobalFollowerManager.PutOffset failed:", follower, err)
+	}
 
 	/*	if err != nil {
 		fmt.Println("###################", err)
@@ -173,7 +147,7 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 		return err
 	}*/
 
-	log.Debugln("RPCHandle_SYNC() receive SyncLeader:", syncLeader)
+	log.Debugln("RPCHandle_SYNC() receive follower:", follower)
 
 	return nil
 
@@ -375,13 +349,14 @@ func SendCreatTopic(nodeAddress string, nodePort int, arg NodePartitionReplicaIn
 type SetSYNCInfo struct {
 	TopicName      string
 	PartitionIndex int
+	ReplicaIndex   int
 	Leader         string
 }
 
 // list中保存的是etcd中topic的列表
 // 根据分区x副本的数量得到所有副本列表
 // 再将这些信息通知需要向副本leader同步的节点
-func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
+func SendSetSYNC(topicList []*mvccpb.KeyValue) error {
 	var topic common.Topic
 	var err error
 
@@ -428,6 +403,8 @@ func SendSYNCSet(topicList []*mvccpb.KeyValue) error {
 					// 生成发送SET_SYNC信息给follower信息
 					syncInfo.TopicName = topic.TopicName
 					syncInfo.PartitionIndex = i
+					syncInfo.ReplicaIndex = nodeParRepInfo.ReplicaIndex
+
 					leaderNode, err := common.GetSingleNode(leaderID)
 					if err != nil {
 						return err

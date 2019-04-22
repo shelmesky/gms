@@ -12,6 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net"
 	"os"
+	"strconv"
 )
 
 func getAction(metaData []byte) int {
@@ -26,12 +27,29 @@ func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) er
 		// 获取Topic对象
 		topic := topics.TopicManager.GetTopic(topicName)
 
+		targetPartition, err := strconv.Atoi(partitionIndex)
+		if err != nil {
+			return utils.ParameterPartitionIndexMissed
+		}
+		partition := topic.GetPartition(targetPartition)
+		if partition == nil {
+			return utils.PartitionNotExist
+		}
+
 		if topic != nil {
 			// 在名字对应的Topic中写入消息体
 			err := topic.AppendMessage(partitionIndex, body, bodyLen)
 			if err != nil {
 				return err
 			}
+
+			// Leader写消息到磁盘完毕后， 等待Follower同步完成
+			err = rpc.GlobalFollowerManager.WaitOffset(topicName, targetPartition, partition.GetCurrentOffset())
+			// 如果发生错误， 则producer应该重新发送
+			if err != nil {
+				return err
+			}
+
 			return nil
 
 		} else {
@@ -85,7 +103,9 @@ func ParseRequest(data []byte) (*common.RequestHeader, interface{}, interface{})
 }
 
 // 处理客户端的写请求
-func handleWriteAction(request *common.RequestHeader, action *common.WriteMessageAction, body []byte) {
+func handleWriteAction(client *common.Client, request *common.RequestHeader, action *common.WriteMessageAction, body []byte) {
+	var response *common.Response
+
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
 
@@ -93,6 +113,15 @@ func handleWriteAction(request *common.RequestHeader, action *common.WriteMessag
 	err := writeMessage(topicName, partitionNum, body, len(body))
 	if err != nil {
 		log.Errorf("send message to %s failed: %s\n", topicName, err)
+		response = common.NewResponse(1, "FAILED", []byte{})
+	} else {
+		response = common.NewResponse(0, "OK", []byte{})
+	}
+
+	err = response.WriteTo(client.Conn)
+	if err != nil {
+		log.Printf("handleWriteAction() write data to [%s] failed: %v\n", client.Conn.RemoteAddr(), err)
+		return
 	}
 }
 
@@ -191,7 +220,7 @@ func HandleConnection(client *common.Client) {
 
 		case *common.WriteMessageAction:
 			body := bodyInterface.([]byte)
-			handleWriteAction(request, action, body)
+			handleWriteAction(client, request, action, body)
 
 		case *common.ReadMessageAction:
 			handleReadAction(client, request, action, nil)

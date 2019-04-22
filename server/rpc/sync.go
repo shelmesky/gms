@@ -14,13 +14,16 @@ import (
 )
 
 // 向副本leader请求
-type SyncLeader struct {
+type Follower struct {
 	NodeID         string
 	NodeAddress    string
 	TopicName      string
 	PartitionIndex int
+	Replica        int
 	Offset         int
 	Count          int
+	WaitChan       chan int
+	IsISR          bool
 }
 
 // 连接到leader副本的RPC服务， 并持续同步内容
@@ -29,17 +32,18 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 
 	go func(manageChan chan interface{}) {
 
-		var syncLeader SyncLeader
+		var follower Follower
 		var request RPCRequest
 		//var reply RPCReply
 		var conn net.Conn
 		var encoder *gob.Encoder
 		var err error
 
-		syncLeader.NodeID = common.GlobalConfig.NodeID
-		syncLeader.NodeAddress = common.GlobalConfig.IPAddress
-		syncLeader.TopicName = info.TopicName
-		syncLeader.PartitionIndex = info.PartitionIndex
+		follower.NodeID = common.GlobalConfig.NodeID
+		follower.NodeAddress = common.GlobalConfig.IPAddress
+		follower.TopicName = info.TopicName
+		follower.PartitionIndex = info.PartitionIndex
+		follower.Replica = info.ReplicaIndex
 
 		// 找到topic
 		topic := topics.TopicManager.GetTopic(info.TopicName)
@@ -100,9 +104,9 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 				partitionObject := topic.GetPartition(info.PartitionIndex)
 
 				// 告诉server当前自己的offset
-				syncLeader.Offset = partitionObject.GetCurrentOffset() + 1
+				follower.Offset = partitionObject.GetCurrentOffset() + 1
 				//syncLeader.Offset = tempOffset
-				syncLeader.Count = 1
+				follower.Count = 1
 
 				request.Action = SYNC
 				request.Version = common.VERSION
@@ -125,7 +129,7 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 				}
 
 				// 发送同步信息
-				err = encoder.Encode(syncLeader)
+				err = encoder.Encode(follower)
 				if err != nil {
 					log.Println("FollowerStartSync() Encode failed:", err)
 					err = conn.Close()
@@ -223,7 +227,7 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 					log.Debugf("FollowerStartSync() written [%d] bytes to disk.\n", n)
 
 					count += 1
-					if count == syncLeader.Count {
+					if count == follower.Count {
 						break
 					}
 					//}
