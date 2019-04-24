@@ -31,9 +31,11 @@ client: 客户端连接对象
 target: 开始读取的offset
 length: 希望读取几个消息
 */
-func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, length int) error {
+func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, length int) (int, error) {
 	var bytesRead int
 	var originPos int64
+
+	readCounter := 0
 
 	// 根据target参数在Log对象中搜索是否存在对应的offset
 	// 获取segment即对应的文件段对象
@@ -41,25 +43,27 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 	// logFilePos即target offset在对应segment开始读取的位置
 	segmentPos, segment, logFilePos, err := diskLog.Search(targetOffset)
 	if err != nil {
-		return err
+		return readCounter, err
 	}
 
 	// 如果logFilePos小于0,说明在index文件中找到target offset
 	if logFilePos < 0 {
-		return fmt.Errorf("cant find offset\n")
+		return readCounter, fmt.Errorf("cant find offset\n")
 	}
 
 	// 获取第一条消息的长度
 	messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
 	if err != nil {
-		return err
+		return readCounter, err
 	}
 
 	// 发送数据
 	err = SendFileToSocket(segment, client, int64(logFilePos), int64(messageLength)+8)
 	if err != nil {
-		return err
+		return readCounter, err
 	}
+
+	readCounter += 1
 
 	// 将消息指针向前移动4+4+MessageLength
 	logFilePos += 8
@@ -73,10 +77,8 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 	length -= 1
 
 	if length == 0 {
-		return nil
+		return readCounter, nil
 	}
-
-	readCounter := 0
 
 	/*
 		logFilePos: 跟踪当前log文件读取的位置
@@ -89,7 +91,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 		if readCounter >= length {
 			err = SendFileToSocket(segment, client, originPos, int64(bytesRead))
 			if err != nil {
-				return err
+				return readCounter, err
 			}
 			break
 		}
@@ -97,7 +99,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 		// 消息的长度
 		messageLength, err := segment.Log.ReadUInt32(logFilePos + 4)
 		if err != nil {
-			return err
+			return readCounter, err
 		}
 
 		// 说明读到了log文件末尾
@@ -106,7 +108,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 			// 将当前segment的内容发送到client
 			err = SendFileToSocket(segment, client, originPos, int64(bytesRead))
 			if err != nil {
-				return err
+				return readCounter, err
 			}
 
 			// 重置originPos，因为切换了新的文件
@@ -118,7 +120,7 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 			segment, err = diskLog.GetSegment(segmentPos)
 			// 如果返回错误,说明已经读取完所有的segment
 			if err != nil {
-				return err
+				return readCounter, err
 			}
 			logFilePos = 0
 			continue
@@ -137,10 +139,10 @@ func BatchRead(diskLog *disklog.DiskLog, client *common.Client, targetOffset, le
 		}
 	}
 
-	return nil
+	return readCounter, nil
 }
 
-func ReadMessage(client *common.Client, topicName, partitionIndex string, targetOffset, count uint32) error {
+func ReadMessage(client *common.Client, topicName, partitionIndex string, targetOffset, count uint32) (int, error) {
 	// 必须提供长度大于0的topic名字
 	if len(topicName) > 0 {
 		// 根据名字获得topic对象
@@ -165,27 +167,27 @@ func ReadMessage(client *common.Client, topicName, partitionIndex string, target
 					targetOffset, partition.GetCurrentOffset())
 				if int(targetOffset) > partition.GetCurrentOffset() {
 
-					return utils.OffsetBigError
+					return 0, utils.OffsetBigError
 				}
 
 				// Partition的Log对象
 				Log := partition.GetLog()
 				// 使用Log对象批量读取消息
-				err = BatchRead(Log, client, int(targetOffset), int(count))
+				n, err := BatchRead(Log, client, int(targetOffset), int(count))
 
 				if err != nil {
-					return err
+					return n, err
 				}
-				return nil
+				return n, nil
 			} else {
 				// TODO: 未提供partition number
 			}
 
 		} else {
-			return utils.ServerError
+			return 0, utils.ServerError
 		}
 
 	}
 
-	return utils.ParameterTopicMissed
+	return 0, utils.ParameterTopicMissed
 }

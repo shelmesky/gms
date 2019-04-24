@@ -45,6 +45,8 @@ func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) er
 
 			// Leader写消息到磁盘完毕后， 等待Follower同步完成
 			err = rpc.GlobalFollowerManager.WaitOffset(topicName, targetPartition, partition.GetCurrentOffset())
+
+			log.Println("000000000000000000", topicName, targetPartition, partition.GetCurrentOffset(), err)
 			// 如果发生错误， 则producer应该重新发送
 			if err != nil {
 				return err
@@ -128,6 +130,8 @@ func handleWriteAction(client *common.Client, request *common.RequestHeader, act
 // 处理客户端的读请求
 func handleReadAction(client *common.Client, request *common.RequestHeader, action *common.ReadMessageAction,
 	body interface{}) {
+	var err error
+
 	// 获取topic名字
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	// 获取partition序号
@@ -137,7 +141,7 @@ func handleReadAction(client *common.Client, request *common.RequestHeader, acti
 	// 获取client希望读取的消息数量
 	count := action.Count
 	// 读取消息
-	err := topics.ReadMessage(client, topicName, partitionNum, targetOffset, count)
+	_, err = topics.ReadMessage(client, topicName, partitionNum, targetOffset, count)
 	if err != nil {
 		log.Errorf("read message from %s-%s failed: %s", topicName, partitionNum, err.Error())
 	}

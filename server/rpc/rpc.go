@@ -127,9 +127,11 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 	offset := uint32(follower.Offset)
 	count := uint32(follower.Count)
 
+	<-follower.MessageChan
+
 	// 通过topic名称， 分区编号， 消息的offset和数量发送读取消息给客户端
 	// 这里并没有通过RPC的方式读取，而是直接将对应的文件内容通过sendfile系统调用发送
-	err = topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count)
+	_, err = topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count)
 	if err == nil {
 		err = GlobalFollowerManager.PutOffset(follower)
 		log.Errorln("GlobalFollowerManager.PutOffset failed:", follower, err)
@@ -350,7 +352,8 @@ type SetSYNCInfo struct {
 	TopicName      string
 	PartitionIndex int
 	ReplicaIndex   int
-	Leader         string
+	LeaderAddress  string
+	LeaderNodeID   string
 }
 
 // list中保存的是etcd中topic的列表
@@ -410,7 +413,8 @@ func SendSetSYNC(topicList []*mvccpb.KeyValue) error {
 						return err
 					}
 					portStr := strconv.Itoa(leaderNode.RPCPort)
-					syncInfo.Leader = leaderNode.IPAddress + ":" + portStr
+					syncInfo.LeaderAddress = leaderNode.IPAddress + ":" + portStr
+					syncInfo.LeaderNodeID = leaderID
 
 					// 获取follower节点的信息
 					followerNodeID := nodeParRepInfo.NodeID

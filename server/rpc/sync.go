@@ -13,17 +13,18 @@ import (
 	"time"
 )
 
-// 向副本leader请求
+// 向副本leader请求指定offset开始的消息
 type Follower struct {
-	NodeID         string
-	NodeAddress    string
-	TopicName      string
-	PartitionIndex int
-	Replica        int
-	Offset         int
-	Count          int
-	WaitChan       chan int
-	IsISR          bool
+	NodeID         string   // follower节点ID
+	NodeAddress    string   // 节点IP地址
+	TopicName      string   // 请求的topic名称
+	PartitionIndex int      // 请求的分区编号
+	Replica        int      // 请求的副本编号
+	Offset         int      // 起始offset
+	Count          int      // 请求的消息数量
+	MessageChan    chan int // 指示有新消息
+	WaitChan       chan int // 等待SYN Handler确认某个offset
+	IsISR          bool     // 是否是符合ISR状态
 }
 
 // 连接到leader副本的RPC服务， 并持续同步内容
@@ -52,7 +53,7 @@ func FollowerStartSync(info SetSYNCInfo) chan interface{} {
 			manageChan <- fmt.Errorf("FollowerStartSync() can not find any topic [%s]\n", info.TopicName)
 		}
 
-		targetLeader := info.Leader
+		targetLeader := info.LeaderAddress
 
 		connect := func() (net.Conn, *gob.Encoder, error) {
 			// 连接到服务器， 获取发送SYNC命令
