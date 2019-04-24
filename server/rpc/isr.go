@@ -74,7 +74,7 @@ func (this *FollowerManager) PutOffset(follower Follower) error {
 	if targetFollower != nil {
 		// TODO: follower一直向WaitChan放入offset， 导致填满WaitChan阻塞follower而引发follower不能同步消息
 		// TODO: 这会发生在follower正常工作，但由于落后leader太多消息时发生，且这时leader又没有读取WaitChan(没有producer发送消息)
-		// TODO: 应该使用超时判断( 或者len(WaitChan)判断元素长度? )，当阻塞时follower代替leader读取旧的offset.
+		// TODO: 应该使用超时判断( 或者len(WaitChan)判断元素长度? )，当阻塞时follower代替leader读取旧的offset.(一口气读取到剩余一半空间)
 		// TODO: 因为旧的offset对于leader无用， leader只判断最新的. 或者说leader只会读取waitOffset时放入的那个offset.
 		targetFollower.WaitChan <- follower.Offset
 		log.Println("##################### PufOffset:", follower)
