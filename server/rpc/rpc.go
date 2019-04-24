@@ -17,8 +17,9 @@ import (
 
 const (
 	SYNC         = 0
-	SET_SYNC     = 2
-	CREATE_TOPIC = 1
+	SET_SYNC     = 1
+	SYNC_MANAGER = 2
+	CREATE_TOPIC = 3
 )
 
 // 所有RPC服务的请求头
@@ -97,6 +98,10 @@ func RPCHandleConnection(conn *net.TCPConn) {
 		// controller发送的设置SYNC信息的请求
 		if request.Action == SET_SYNC {
 			err = RPCHandle_SET_SYNC(encoder, decoder, conn)
+		}
+
+		if request.Action == SYNC_MANAGER {
+			err = RPCHandle_SYNC_MANAGER(encoder, decoder, conn)
 		}
 
 		// controller发送的创建topic的请求
@@ -241,6 +246,48 @@ func RPCHandle_SET_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TC
 	return nil
 }
 
+// 处理由controller发送来的， 让每个leader开启Follower Manager的SYNC_MANAGER命令
+func RPCHandle_SYNC_MANAGER(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
+	var syncManager SetSYNCManager
+	var err error
+	var reply RPCReply
+
+	err = decoder.Decode(&syncManager)
+
+	if err != nil {
+		log.Warningln("RPCHandle_SYNC_MANAGER() decode NodePartitionReplicaInfo failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandle_SYNC_MANAGER() close connection failed:", err)
+		}
+		return err
+	}
+
+	var follower Follower
+	follower.TopicName = syncManager.TopicName
+	follower.PartitionIndex = syncManager.PartitionIndex
+	follower.Replica = syncManager.ReplicaIndex
+
+	// 将follower的信息加入Follower Manager
+	GlobalFollowerManager.Add(follower)
+	log.Println("RPCHandle_SYNC_MANAGER() got SYNC_MANAGER:", syncManager)
+
+	reply.Code = 0
+	reply.Result = "OK"
+
+	err = encoder.Encode(reply)
+	if err != nil {
+		log.Warningln("RPCHandle_SYNC_MANAGER() Encode RPCReply failed:", err)
+		err = conn.Close()
+		if err != nil {
+			log.Errorln("RPCHandle_SYNC_MANAGER() close connection failed:", err)
+		}
+		return err
+	}
+
+	return nil
+}
+
 func RPCHandle_CREATE_TOPIC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
 	var nodeParRepInfo NodePartitionReplicaInfo
 	var err error
@@ -347,13 +394,20 @@ func SendCreatTopic(nodeAddress string, nodePort int, arg NodePartitionReplicaIn
 	return nil
 }
 
-// 由controller通知其他节点的同步信息
+// 由controller通知其他follower节点的同步信息
 type SetSYNCInfo struct {
 	TopicName      string
 	PartitionIndex int
 	ReplicaIndex   int
 	LeaderAddress  string
 	LeaderNodeID   string
+}
+
+// controller发送给leader节点启动follower manager
+type SetSYNCManager struct {
+	TopicName      string
+	PartitionIndex int
+	ReplicaIndex   int
 }
 
 // list中保存的是etcd中topic的列表
@@ -433,7 +487,7 @@ func SendSetSYNC(topicList []*mvccpb.KeyValue) error {
 					encoder := gob.NewEncoder(conn)
 
 					var request RPCRequest
-					request.Version = 1000
+					request.Version = common.VERSION
 					request.Action = SET_SYNC
 
 					err = encoder.Encode(request)
@@ -458,6 +512,54 @@ func SendSetSYNC(topicList []*mvccpb.KeyValue) error {
 					var reply RPCReply
 					decoder := gob.NewDecoder(conn)
 					err = decoder.Decode(&reply)
+					if err != nil {
+						err = conn.Close()
+						if err != nil {
+							log.Errorln("SendSYNCSet() close connection failed:", err)
+						}
+						return err
+					}
+
+					log.Debugln("SendSYNCSet() got reply from rpc server:", reply)
+
+					// 将SYNC_MANAGER命令(包含follower的信息)发送给leader， Leader会启动Follower manager
+					leaderAddr := followerNode.IPAddress + ":" + strconv.Itoa(leaderNode.RPCPort)
+					conn, err = net.DialTimeout("tcp", leaderAddr, time.Second*3)
+					if err != nil {
+						return err
+					}
+
+					leaderEncoder := gob.NewEncoder(conn)
+					leaderDecoder := gob.NewDecoder(conn)
+
+					var syncManager SetSYNCManager
+					syncManager.TopicName = topic.TopicName
+					syncManager.PartitionIndex = i
+					syncManager.ReplicaIndex = nodeParRepInfo.ReplicaIndex
+
+					request.Version = common.VERSION
+					request.Action = SYNC_MANAGER
+
+					err = leaderEncoder.Encode(request)
+					if err != nil {
+						err = conn.Close()
+						if err != nil {
+							log.Errorln("SendSYNCSet() close connection failed:", err)
+						}
+						return err
+					}
+
+					err = leaderEncoder.Encode(syncManager)
+					if err != nil {
+						err = conn.Close()
+						if err != nil {
+							log.Errorln("SendSYNCSet() close connection failed:", err)
+						}
+						return err
+					}
+
+					// 获取RPC响应结果
+					err = leaderDecoder.Decode(&reply)
 					if err != nil {
 						err = conn.Close()
 						if err != nil {
