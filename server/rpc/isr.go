@@ -95,6 +95,7 @@ func (this *FollowerManager) WaitOffset(topicName string, partitionIndex, curren
 	for k, v := range this.topicPartitionReplicaMap {
 		if strings.HasPrefix(k, key) {
 			// 向MessageChan中放入最新offset， 告诉follower有新消息可以读取
+			// #TODO: 如果这里通知了follower， 但是没有follower读取
 			v.MessageChan <- currentOffset
 
 			followerList = append(followerList, v)
@@ -112,6 +113,8 @@ func (this *FollowerManager) WaitOffset(topicName string, partitionIndex, curren
 		// 在循环中多次读取WaitChan， 因为follower可能在其中放入多个offset
 		// 当follower的offset落后leader时会发生这种情况
 		for {
+			// #TODO: 上面follower没有读取MessageChan，就会导致WaitChan为空，读取阻塞
+			// #TODO: 应使用时间轮超时读取，跳出循环
 			followerOffset := <-targetFollower.WaitChan
 			if followerOffset == currentOffset {
 				log.Println("##################### WaitOffset:", followerOffset, currentOffset)
