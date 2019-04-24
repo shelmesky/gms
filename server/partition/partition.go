@@ -188,7 +188,8 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 		// 如果在打开的topic列表中根据分区编号找到分区， 则将body写入到分区的worker chan
 		if partition, ok := partitionList.partitions[selectedPartition]; ok {
 			if partition != nil {
-				partition.queue <- body
+				//partition.queue <- body
+				partition.diskLog.AppendBytes(body, len(body))
 			}
 		} else {
 			return utils.PartitionNotExist
@@ -245,7 +246,9 @@ func (partitionList *PartitionList) AppendMessage(partitionIndex string, body []
 
 			if partition, ok := partitionList.partitions[selectedPartition]; ok {
 				if partition != nil {
-					partition.queue <- body[pos : pos+messageHeader.Length]
+					//partition.queue <- body[pos : pos+messageHeader.Length]
+					message := body[pos : pos+messageHeader.Length]
+					partition.diskLog.AppendBytes(message, len(message))
 				}
 			} else {
 				return utils.PartitionNotExist

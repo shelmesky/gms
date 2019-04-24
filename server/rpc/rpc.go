@@ -47,15 +47,16 @@ type NodePartitionReplicaInfo struct {
 }
 
 func RPCHandleConnection(conn *net.TCPConn) {
-	var request RPCRequest
 	var err error
 
 	log.Debugf("RPCHandleConnection() got client: %v\n", conn.RemoteAddr())
 
-	decoder := gob.NewDecoder(conn)
-	encoder := gob.NewEncoder(conn)
-
 	for {
+		var request RPCRequest
+
+		decoder := gob.NewDecoder(conn)
+		encoder := gob.NewEncoder(conn)
+
 		/*
 			err = conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 			if err != nil {
@@ -118,13 +119,17 @@ func RPCHandleConnection(conn *net.TCPConn) {
 
 func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPConn) error {
 	var follower Follower
-	//var rpcReply RPCReply
+	var buffer []byte
+	var rpcReply RPCReply
 
 	err := decoder.Decode(&follower)
+
 	if err != nil {
 		err = errors.Wrap(err, "RPCHandle_SYNC() Decode failed")
 		return err
 	}
+
+	log.Debugln("RPCHandle_SYNC() receive follower:", follower)
 
 	client := common.NewClient(conn)
 
@@ -132,29 +137,60 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 	offset := uint32(follower.Offset)
 	count := uint32(follower.Count)
 
-	<-follower.MessageChan
+	/*
+		通过topic名称， 分区编号， 消息的offset查找在SYNC_MANAGER阶段添加到Follower Manager的follower，
+		这个最早的follower才是管理每个follower的真正对象，
+		同时还会判断当前follower请求的offset是否小于分区的currentOffset， 如果小于不用等待MessageChannel，直接读取。
+
+		如果读取ReadMessage失败， follower会重新发起RPC SYNC命令，带着上次同样的offset， 并不会丢失消息。
+	*/
+	followerSmallOffset := false
+	targetFollower := GlobalFollowerManager.Get(follower)
+	if targetFollower != nil {
+		topic := topics.TopicManager.GetTopic(follower.TopicName)
+		if topic != nil {
+			Partition := topic.GetPartition(follower.PartitionIndex)
+			if Partition != nil {
+				if Partition.GetCurrentOffset() > follower.Offset {
+					followerSmallOffset = true
+				}
+			}
+		}
+
+		if !followerSmallOffset {
+			messageOffset := <-targetFollower.MessageChan
+			log.Debugln("read <-targetFollower.MessageChan ", messageOffset, follower.Offset)
+		}
+	} else {
+		return fmt.Errorf("RPCHandle_SYNC() -> GlobalFollowerManager.Get() is nil\n")
+	}
+
+	GlobalFollowerManager.String()
 
 	// 通过topic名称， 分区编号， 消息的offset和数量发送读取消息给客户端
 	// 这里并没有通过RPC的方式读取，而是直接将对应的文件内容通过sendfile系统调用发送
-	_, err = topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count)
+	n, buffer, err := topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count, false)
+
+	log.Println("ReadMessage() return result:", n, len(buffer), err)
+
 	if err == nil {
+		rpcReply.Code = 0
+		rpcReply.Result = "OK"
+		rpcReply.Data = buffer
+
 		err = GlobalFollowerManager.PutOffset(follower)
+	} else {
+		rpcReply.Code = 1
+		rpcReply.Result = err.Error()
+		rpcReply.Data = buffer
+
 		log.Errorln("GlobalFollowerManager.PutOffset failed:", follower, err)
 	}
 
-	/*	if err != nil {
-		fmt.Println("###################", err)
-		rpcReply.Code = 1
-		rpcReply.Result = err.Error()
-		err = encoder.Encode(rpcReply)
-		if err != nil {
-			log.Errorln(errors.Wrap(err, "RPCHandle_SYNC() Encode failed"))
-		}
-		fmt.Println("555555555555555555555555555555")
-		return err
-	}*/
-
-	log.Debugln("RPCHandle_SYNC() receive follower:", follower)
+	err = encoder.Encode(rpcReply)
+	if err != nil {
+		log.Errorln(errors.Wrap(err, "RPCHandle_SYNC() Encode failed"))
+	}
 
 	return nil
 

@@ -2,7 +2,6 @@ package rpc
 
 import (
 	"fmt"
-	"github.com/shelmesky/gms/server/common"
 	log "github.com/sirupsen/logrus"
 	"strconv"
 	"strings"
@@ -74,6 +73,7 @@ func (this *FollowerManager) PutOffset(follower Follower) error {
 	targetFollower := this.Get(follower)
 	if targetFollower != nil {
 		targetFollower.WaitChan <- follower.Offset
+		log.Println("##################### PufOffset:", follower)
 	} else {
 		return fmt.Errorf("FollowerManager cant find %v\n", follower)
 	}
@@ -89,36 +89,49 @@ func (this *FollowerManager) WaitOffset(topicName string, partitionIndex, curren
 	this.RLock()
 	defer this.RUnlock()
 
+	// leader当前的currentOffset大于follow
+	currentOffset -= 1
+
 	for k, v := range this.topicPartitionReplicaMap {
-		log.Println("111111111111111111111", k, key)
 		if strings.HasPrefix(k, key) {
-
-			log.Println("22222222222222222", k, key)
-
+			// 向MessageChan中放入最新offset， 告诉follower有新消息可以读取
 			v.MessageChan <- currentOffset
 
-			// 排除自身节点
-			if v.NodeID != common.GlobalConfig.NodeID {
-				followerList = append(followerList, v)
-			}
+			followerList = append(followerList, v)
 		}
 	}
 
 	listLen := len(followerList)
 
+	if listLen == 0 {
+		return fmt.Errorf("WaitOffset() cant find any follower!")
+	}
+
 	for idx := range followerList {
 		targetFollower := followerList[idx]
-		followerOffset := <-targetFollower.WaitChan
-		log.Println("33333333333333333333333", followerOffset, currentOffset)
-		if followerOffset == currentOffset {
-			listLen -= 1
+		// 在循环中多次读取WaitChan， 因为follower可能在其中放入多个offset
+		// 当follower的offset落后leader时会发生这种情况
+		for {
+			followerOffset := <-targetFollower.WaitChan
+			if followerOffset == currentOffset {
+				log.Println("##################### WaitOffset:", followerOffset, currentOffset)
+				listLen -= 1
+				break
+			}
 		}
 	}
 
 	if listLen == 0 {
+		log.Debugln("##################### WaitOffset:", listLen)
 		return nil
 	}
 
 	return fmt.Errorf("FollowerManager WaitOffset failed: [%s - %d - %d]\n",
 		topicName, partitionIndex, currentOffset)
+}
+
+func (this FollowerManager) String() {
+	for k, v := range this.topicPartitionReplicaMap {
+		log.Debugf("[%s] -> [%v]\n", k, v)
+	}
 }
