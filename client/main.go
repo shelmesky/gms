@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
-	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"net"
 	"os"
@@ -108,29 +108,38 @@ func WriteMessage(conn *net.TCPConn) {
 	// 发送总长度, 请求结构体, metadata
 	n, err := netBufferReq.WriteTo(conn)
 	if err != nil {
-		fmt.Println("netbuffer.WriteTo failed:", err)
+		log.Errorln("netbuffer.WriteTo failed:", err)
 		return
 	}
 
 	if n != int64(requestTotalLen) {
-		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
+		log.Errorf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
 		return
 	} else {
-		fmt.Printf("written [totalLength, request, metadata] %d bytes\n", n)
+		log.Printf("written [totalLength, request, metadata] %d bytes\n", n)
 	}
 
 	// 发送N个消息
 	n, err = netBufferBody.WriteTo(conn)
 	if err != nil {
-		fmt.Println("netbuffer.WriteTo failed:", err)
+		log.Errorln("netbuffer.WriteTo failed:", err)
 		return
 	}
+
 	if uint64(n) != totalBodyLength {
-		fmt.Printf("written length [%d] is too small than: [%d]\n", n, totalBodyLength)
+		log.Errorf("written length [%d] is too small than: [%d]\n", n, totalBodyLength)
 		return
 	} else {
-		fmt.Printf("written [body] %d bytes\n", n)
+		log.Printf("written [body] %d bytes\n", n)
 	}
+
+	responseHeader, err := common.ReadResponseHeader(conn)
+	if err != nil {
+		log.Errorln("read response header failed:", err)
+		return
+	}
+
+	log.Println("read reponse:", responseHeader.Code, string(responseHeader.Message[:]))
 }
 
 func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32) {
@@ -145,18 +154,18 @@ func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCou
 	// 使用writev系用调用发送数据
 	n, err := netBuffer.WriteTo(conn)
 	if uint64(n) != totalLength || err != nil {
-		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
+		log.Errorf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
 		if err = conn.Close(); err != nil {
-			logrus.Println("close socket failed:", err)
+			log.Errorln("close socket failed:", err)
 		}
 	}
 
 	// 读取服务器返回的response
 	responseHeader, err := common.ReadResponseHeader(conn)
 	if err != nil {
-		logrus.Println("read response header failed:", err)
+		log.Errorln("read response header failed:", err)
 	} else {
-		fmt.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
+		log.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
 	}
 }
 
@@ -190,22 +199,22 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 	// 发送总长度, 请求结构体, metadata
 	n, err := netBuffer.WriteTo(conn)
 	if n != int64(requestTotalLen) {
-		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
+		log.Errorf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
 		return
 	} else {
-		fmt.Printf("written %d bytes\n", n)
+		log.Printf("written %d bytes\n", n)
 	}
 
 	if err != nil {
-		fmt.Println("netbuffer.WriteTo failed:", err)
+		log.Errorln("netbuffer.WriteTo failed:", err)
 		return
 	}
 
 	if n != int64(requestTotalLen) {
-		fmt.Printf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
+		log.Errorf("written length [%d] is too small than: [%d]\n", n, requestTotalLen)
 		return
 	} else {
-		fmt.Printf("written %d bytes\n", n)
+		log.Printf("written %d bytes\n", n)
 	}
 
 	for {
@@ -226,7 +235,7 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 
 		length := binary.LittleEndian.Uint32(lengthBuf)
 
-		fmt.Printf("offset: %d, length: %d\n", offset, length)
+		log.Printf("offset: %d, length: %d\n", offset, length)
 
 		bodyBuf := make([]byte, length)
 
@@ -236,12 +245,12 @@ func ReadMessage(conn *net.TCPConn, topicName, partitionNum string, targetOffset
 		}
 
 		body := common.BytesToMessage(bodyBuf)
-		fmt.Println("body: ", body)
+		log.Println("body: ", body)
 
 		key := bodyBuf[common.WRITE_MESSAGE_LEN : common.WRITE_MESSAGE_LEN+body.KeyLength]
 		value := bodyBuf[common.WRITE_MESSAGE_LEN+body.KeyLength : common.WRITE_MESSAGE_LEN+body.KeyLength+body.ValueLength]
-		fmt.Println("key: ", string(key))
-		fmt.Println("value: ", string(value))
+		log.Println("key: ", string(key))
+		log.Println("value: ", string(value))
 	}
 }
 
@@ -257,18 +266,18 @@ func StartSyncTopic(conn *net.TCPConn, topicName string) {
 	// 使用writev系用调用发送数据
 	n, err := netBuffer.WriteTo(conn)
 	if uint64(n) != totalLength || err != nil {
-		logrus.Printf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
+		log.Errorf("Writev failed, total length: %d, data written: %d, error: %s\n", totalLength, n, err)
 		if err = conn.Close(); err != nil {
-			logrus.Println("close socket failed:", err)
+			log.Errorln("close socket failed:", err)
 		}
 	}
 
 	// 读取服务器返回的response
 	responseHeader, err := common.ReadResponseHeader(conn)
 	if err != nil {
-		logrus.Println("read response header failed:", err)
+		log.Errorln("read response header failed:", err)
 	} else {
-		fmt.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
+		log.Println("read response:", responseHeader.Code, string(responseHeader.Message[:]))
 	}
 }
 
@@ -280,14 +289,14 @@ func main() {
 	conn, err := net.DialTimeout("tcp", target, time.Second*2)
 
 	if err != nil {
-		fmt.Println("dial failed:", err)
+		log.Errorln("dial failed:", err)
 		return
 	}
 
 	tcpConn := conn.(*net.TCPConn)
 
 	if *action == "" {
-		fmt.Println("please specify action!")
+		log.Errorln("please specify action!")
 		os.Exit(1)
 	}
 
@@ -300,7 +309,7 @@ func main() {
 	} else if *action == "startSync" {
 		StartSyncTopic(tcpConn, *syncTopic)
 	} else {
-		fmt.Println("action is not support!")
+		log.Errorln("action is not support!")
 		os.Exit(1)
 	}
 }
