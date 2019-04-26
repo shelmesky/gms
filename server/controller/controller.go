@@ -345,6 +345,7 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		}
 	}
 
+	successRpc := 0
 	// 将创建topic和分区的信息发给所有节点
 	for idx := range nodeParRepList {
 		item := nodeParRepList[idx]
@@ -356,6 +357,12 @@ func ControllerSendCreateTopic(key, value []byte) error {
 				node.IPAddress, node.RPCPort, err.Error())
 			return err
 		}
+		successRpc += 1
+	}
+
+	if successRpc != len(nodeParRepList) {
+		return fmt.Errorf("ControllerSendCreateTopic() send rpc command [CreateTopic] want %d nodes,"+
+			"but acture is [%d]\n", len(nodeParRepList), successRpc)
 	}
 
 	return nil
