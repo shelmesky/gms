@@ -22,4 +22,8 @@ var (
 	MessageLengthInvalid          = errors.New("length of message bytes is invalid")
 	CloseConnError                = errors.New("close client connection failed")
 	OffsetBigError                = errors.New("offset in request is big than partition's offset")
+	PartitionNoISRList            = errors.New("can not find any follower replicate")
+	NotEnoughReplicas             = errors.New("there's no enough replicas for partition")
+	ISRFollowerTimeout            = errors.New("All of the ISR follower list was not active")
+	UnSupportAckMode              = errors.New("unsupported ack mode")
 )

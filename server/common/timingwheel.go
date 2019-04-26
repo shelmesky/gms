@@ -10,7 +10,8 @@ var (
 )
 
 func init() {
-	GlobalTimingWheel = NewTimingWheel(5*time.Second, 12)
+	// 最大5分钟， 最小刻度50毫秒的时间轮
+	GlobalTimingWheel = NewTimingWheel(50*time.Millisecond, 600)
 }
 
 type TimingWheel struct {

@@ -188,6 +188,7 @@ type WriteMessageAction struct {
 	Action          uint32
 	TopicName       [TOPIC_NAME_LEN]byte
 	PartitionNumber [32]byte
+	Ack             int8
 }
 
 func BytesToWriteMessageAction(data []byte) *WriteMessageAction {
@@ -206,7 +207,7 @@ func WriteMessageActionToBytes(action *WriteMessageAction) []byte {
 	return data
 }
 
-func NewWriteMessageAction(topicName, PartitionNumber string) []byte {
+func NewWriteMessageAction(topicName, PartitionNumber string, Ack int8) []byte {
 	var writeMessageAction WriteMessageAction
 	writeMessageAction.Action = Write
 
@@ -223,6 +224,8 @@ func NewWriteMessageAction(topicName, PartitionNumber string) []byte {
 	for i := 0; i < len(PartitionNumber); i++ {
 		writeMessageAction.PartitionNumber[i] = PartitionNumber[i]
 	}
+
+	writeMessageAction.Ack = Ack
 	return WriteMessageActionToBytes(&writeMessageAction)
 }
 

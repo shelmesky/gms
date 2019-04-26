@@ -46,8 +46,8 @@ func NewBody(key, value []byte) ([]byte, uint64) {
 	return messageBytes, message.Length
 }
 
-func NewWriteMessageMeta(topicName, partitionNum string) ([]byte, uint32) {
-	meta := common.NewWriteMessageAction(topicName, partitionNum)
+func NewWriteMessageMeta(topicName, partitionNum string, Ack int8) ([]byte, uint32) {
+	meta := common.NewWriteMessageAction(topicName, partitionNum, Ack)
 	return meta, uint32(len(meta))
 }
 
@@ -65,10 +65,7 @@ func NewMessage(bodyKey, bodyValue []byte, netBuffer *net.Buffers) uint64 {
 	return bodyLen
 }
 
-func WriteMessage(conn *net.TCPConn) {
-	topicName := "testtopic"
-	partitionNum := "0"
-
+func WriteMessage(conn *net.TCPConn, topicName, partitionNum string, ack int8) {
 	var MetaData []byte
 	var netBufferBody net.Buffers
 	var netBufferReq net.Buffers
@@ -79,7 +76,7 @@ func WriteMessage(conn *net.TCPConn) {
 	request.Version = 1001
 	request.Sequence = 1
 
-	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, partitionNum)
+	MetaData, request.MetaDataLength = NewWriteMessageMeta(topicName, partitionNum, ack)
 
 	// 循环增加消息体
 	for i := 0; i < 1; i++ {
@@ -131,6 +128,11 @@ func WriteMessage(conn *net.TCPConn) {
 		return
 	} else {
 		log.Printf("written [body] %d bytes\n", n)
+	}
+
+	// 如果ack等于0,则客户端发送完成读写请求就直接退出，不会等待服务器的响应
+	if ack == 0 {
+		return
 	}
 
 	responseHeader, err := common.ReadResponseHeader(conn)
@@ -293,6 +295,8 @@ func main() {
 		return
 	}
 
+	start := time.Now().UnixNano() / int64(time.Millisecond)
+
 	tcpConn := conn.(*net.TCPConn)
 
 	if *action == "" {
@@ -301,7 +305,10 @@ func main() {
 	}
 
 	if *action == "writeMessage" {
-		WriteMessage(tcpConn)
+		topicName := "testtopic"
+		partitionNum := "0"
+		ack := -1
+		WriteMessage(tcpConn, topicName, partitionNum, int8(ack))
 	} else if *action == "readMessage" {
 		ReadMessage(tcpConn, "testtopic", "0", 1, 5)
 	} else if *action == "createTopic" {
@@ -312,4 +319,8 @@ func main() {
 		log.Errorln("action is not support!")
 		os.Exit(1)
 	}
+
+	end := time.Now().UnixNano() / int64(time.Millisecond)
+
+	log.Warningf("duration [%v] milliseconds.\n", end-start)
 }

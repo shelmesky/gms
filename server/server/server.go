@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/controller"
 	"github.com/shelmesky/gms/server/node"
@@ -22,7 +23,7 @@ func getAction(metaData []byte) int {
 }
 
 // 根据topic名字获取内存中Topic对象并写入数据
-func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) error {
+func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int, ack int8) error {
 	if len(topicName) > 0 {
 		// 获取Topic对象
 		topic := topics.TopicManager.GetTopic(topicName)
@@ -46,10 +47,11 @@ func writeMessage(topicName, partitionIndex string, body []byte, bodyLen int) er
 			rpc.GlobalFollowerManager.String()
 
 			// Leader写消息到磁盘完毕后， 等待Follower同步完成
-			err = rpc.GlobalFollowerManager.WaitOffset(topicName, targetPartition, partition.GetCurrentOffset())
+			err = rpc.GlobalFollowerManager.WaitOffset(topicName, targetPartition, partition.GetCurrentOffset(), ack)
 
 			// 如果发生错误， 则producer应该重新发送
 			if err != nil {
+				log.Errorln("WaitOffset() failed:", err)
 				return err
 			}
 
@@ -108,19 +110,28 @@ func ParseRequest(data []byte) (*common.RequestHeader, interface{}, interface{})
 // 处理客户端的写请求
 func handleWriteAction(client *common.Client, request *common.RequestHeader, action *common.WriteMessageAction, body []byte) {
 	var response *common.Response
+	var err error
 
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	partitionNum := string(bytes.Trim(action.PartitionNumber[:], "\x00"))
+	ack := action.Ack
+
+	// 如果ack不等于0、不等于1、不等于-1则报错给producer
+	if ack != 0 && ack != 1 && ack != -1 {
+		response = common.NewResponse(1, fmt.Sprintf("ack is not 0 or 1 or -1"), []byte{})
+		goto end
+	}
 
 	// 写入消息
-	err := writeMessage(topicName, partitionNum, body, len(body))
+	err = writeMessage(topicName, partitionNum, body, len(body), ack)
 	if err != nil {
 		log.Errorf("send message to %s failed: %s\n", topicName, err)
-		response = common.NewResponse(1, "FAILED", []byte{})
+		response = common.NewResponse(1, fmt.Sprintf("FAILED: %v\n", err), []byte{})
 	} else {
 		response = common.NewResponse(0, "OK", []byte{})
 	}
 
+end:
 	err = response.WriteTo(client.Conn)
 	if err != nil {
 		log.Printf("handleWriteAction() write data to [%s] failed: %v\n", client.Conn.RemoteAddr(), err)

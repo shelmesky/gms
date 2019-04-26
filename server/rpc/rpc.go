@@ -145,7 +145,7 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 		如果读取ReadMessage失败， follower会重新发起RPC SYNC命令，带着上次同样的offset， 并不会丢失消息。
 	*/
 	followerSmallOffset := false
-	targetFollower := GlobalFollowerManager.Get(follower)
+	targetFollower := GlobalFollowerManager.Get(follower, false)
 	if targetFollower != nil {
 		topic := topics.TopicManager.GetTopic(follower.TopicName)
 		if topic != nil {
@@ -158,8 +158,25 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 		}
 
 		if !followerSmallOffset {
-			messageOffset := <-targetFollower.MessageChan
-			log.Debugln("read <-targetFollower.MessageChan ", messageOffset, follower.Offset)
+			select {
+			// 检测2秒钟内是否有新消息，否则返回给RPC客户端超时
+			case <-common.GlobalTimingWheel.After(2000 * time.Millisecond):
+				rpcReply.Code = 1
+				rpcReply.Result = "RPCHandle_SYNC() Wait MessageChan timeout..."
+				rpcReply.Data = []byte{}
+
+				err = encoder.Encode(rpcReply)
+				if err != nil {
+					log.Errorln(errors.Wrap(err, "RPCHandle_SYNC() Encode failed"))
+				}
+
+				// 返回nil，上层的for循环会继续运行，RPC连接不会关闭
+				return nil
+
+			case messageOffset := <-targetFollower.MessageChan:
+				log.Debugln("read <-targetFollower.MessageChan ", messageOffset, follower.Offset)
+				break
+			}
 		}
 	} else {
 		return fmt.Errorf("RPCHandle_SYNC() -> GlobalFollowerManager.Get() is nil\n")
@@ -169,7 +186,9 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 
 	// 通过topic名称， 分区编号， 消息的offset和数量发送读取消息给客户端
 	// 这里并没有通过RPC的方式读取，而是直接将对应的文件内容通过sendfile系统调用发送
+
 	n, buffer, err := topics.ReadMessage(&client, follower.TopicName, partitionIndex, offset, count, false)
+	// 即使想要读取的offset和当前分区的offset一样，也会返回一个消息，所以此处n必然大于0
 
 	log.Println("ReadMessage() return result:", n, len(buffer), err)
 
@@ -178,13 +197,22 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 		rpcReply.Result = "OK"
 		rpcReply.Data = buffer
 
-		err = GlobalFollowerManager.PutOffset(follower)
+		err = GlobalFollowerManager.PutOffset(follower, true)
+		if err != nil {
+			rpcReply.Code = 2
+			rpcReply.Result = "ReadMessage() reads empty message"
+			rpcReply.Data = []byte{}
+
+			log.Println("GlobalFollowerManager.PutOffset failed:", follower, err)
+		}
+
 	} else {
-		rpcReply.Code = 1
+		rpcReply.Code = 3
 		rpcReply.Result = err.Error()
 		rpcReply.Data = buffer
 
-		log.Errorln("GlobalFollowerManager.PutOffset failed:", follower, err)
+		log.Errorln("ReadMessage() failed:", follower, err)
+
 	}
 
 	err = encoder.Encode(rpcReply)

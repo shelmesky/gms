@@ -21,9 +21,12 @@ type Follower struct {
 	Replica        int      // 请求的副本编号
 	Offset         int      // 起始offset
 	Count          int      // 请求的消息数量
+	IsISR          bool     // 是否符合ISR状态
+	LastUpdate     int64    `gob:"-"` // 最后请求的时间戳
+	LastWriteStart int64    `gob:"-"` // 上一次写入消息的开始时间戳
+	LastWriteEnd   int64    `gob:"-"` // 上一次写入消息的结束时间戳
 	MessageChan    chan int `gob:"-"` // 指示有新消息
 	WaitChan       chan int `gob:"-"` // 等待SYN Handler确认某个offset
-	IsISR          bool     // 是否是符合ISR状态
 }
 
 // 连接到leader副本的RPC服务， 并持续同步内容
@@ -166,15 +169,13 @@ func FollowerStartSync(leaderInfo SetSYNCInfo) chan interface{} {
 			if reply.Code != 0 {
 				if reply.Code == 1 {
 					// 没有新的消息， 暂停2秒
-					time.Sleep(2 * time.Second)
+					//time.Sleep(2 * time.Second)
 				}
 			} else {
 				if len(reply.Data) == 0 {
 					continue
 				}
 				log.Debugln("FollowerStartSync() start read data from server")
-
-				log.Println("reply.Data", string(reply.Data))
 
 				message := reply.Data
 				offsetBuf := message[:4]

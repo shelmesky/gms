@@ -22,4 +22,5 @@ type Config struct {
 	DataDir          string // 数据保存的目录
 	EtcdServer       string // etcd服务器地址
 	IPAddress        string // Node之间通信的IP地址
+	InSyncReplicas   int    // leader副本向follower同步数据时最小的同步副本数量
 }

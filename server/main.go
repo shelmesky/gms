@@ -19,6 +19,7 @@ var (
 	dataDir          = flag.String("data-dir", "./data", "local data dir")
 	etcdServer       = flag.String("etcd-server", "127.0.0.1:2379", "etcd server")
 	ipAddress        = flag.String("ipaddress", "127.0.0.1", "ip address for communication")
+	inSyncReplicas   = flag.Int("insync-replicas", 2, "in sync replicas for partition SYNC")
 )
 
 func main() {
@@ -56,4 +57,5 @@ func Init() {
 	common.GlobalConfig.DataDir = *dataDir
 	common.GlobalConfig.EtcdServer = *etcdServer
 	common.GlobalConfig.IPAddress = *ipAddress
+	common.GlobalConfig.InSyncReplicas = *inSyncReplicas
 }
