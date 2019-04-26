@@ -295,6 +295,53 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		nodeParRepList[idx].TopicName = topicInfo.TopicName
 	}
 
+	getPartitionReplicaInfoByNodeID := func(nodeID string) (string, error) {
+		var ret string
+		var item *rpc.NodePartitionReplicaInfo
+
+		for idx := range nodeParRepList {
+			item = nodeParRepList[idx]
+			if item.NodeID == nodeID {
+				break
+			}
+		}
+
+		if item != nil {
+			bytes, err := json.Marshal(item)
+			if err != nil {
+				return ret, fmt.Errorf("json marshal failed:", err)
+			}
+
+			ret = string(bytes)
+		} else {
+			return ret, fmt.Errorf("can not find correct nodeid")
+		}
+
+		return ret, nil
+	}
+
+	/*
+		在etcd的/brokers-topics/nodeID/topicName-partition0-replica0这个KEY之中，
+		保存topic名为topicName，分区序号为0, 副本序号为0的副本信息。
+		/brokers-topics/nodeID/下保存的是所有这个node的保存的副本。
+	*/
+	for idx := range nodeParRepList {
+		tempNodeParRep := nodeParRepList[idx]
+		key := fmt.Sprintf("/brokers-topics/%s/%s-partition%d-replica%d", tempNodeParRep.NodeID, tempNodeParRep.TopicName,
+			tempNodeParRep.PartitionIndex, tempNodeParRep.ReplicaIndex)
+		value, err := getPartitionReplicaInfoByNodeID(tempNodeParRep.NodeID)
+		if err != nil {
+			log.Println("getPartitionReplicaInfoByNodeID() failed:", err)
+			continue
+		}
+
+		_, err = kv.Put(context.Background(), key, value)
+		if err != nil {
+			log.Println("kv.Put() failed:", err)
+			continue
+		}
+	}
+
 	getPartitionReplicaInfo := func(partitionIndex, replicaIndex int) (string, error) {
 		var ret string
 		var item *rpc.NodePartitionReplicaInfo
@@ -322,9 +369,8 @@ func ControllerSendCreateTopic(key, value []byte) error {
 
 	/*
 		在etcd的/topics-brokers/topicName/Partition-0/Replica-0这个key之中，
-		保存topic名字为topicName， 分区序号为0的分区信息。
-		value保存的信息是这个分区对应的所有副本的信息
-		例如key为topicName-0， value为common.NodePartitionReplicaInfo结构列表.
+		保存topic名字为topicName， 分区序号为0，副本序号为0的副本信息。
+		/topics-brokers/topicName/下保存的是这个topic下的所有分区副本列表。
 	*/
 	topicNamePrefix := fmt.Sprintf("/topics-brokers/%s", topicInfo.TopicName)
 	for i := 0; i < int(topicInfo.PartitionCount); i++ {
