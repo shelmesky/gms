@@ -287,6 +287,7 @@ type CreateTopicAction struct {
 	TopicName      [TOPIC_NAME_LEN]byte
 	PartitionCount uint32
 	ReplicaCount   uint32
+	InSyncReplicas uint32
 }
 
 func BytesToCreateTopicAction(data []byte) *CreateTopicAction {
@@ -305,7 +306,7 @@ func CreateTopicActionToBytes(action *CreateTopicAction) []byte {
 	return data
 }
 
-func NewCreateTopicAction(topicName string, PartitionCount, ReplicaCount uint32) []byte {
+func NewCreateTopicAction(topicName string, PartitionCount, ReplicaCount uint32, InSyncReplicas uint32) []byte {
 	var action CreateTopicAction
 	action.Action = CreateTopic
 
@@ -318,6 +319,7 @@ func NewCreateTopicAction(topicName string, PartitionCount, ReplicaCount uint32)
 
 	action.PartitionCount = PartitionCount
 	action.ReplicaCount = ReplicaCount
+	action.InSyncReplicas = InSyncReplicas
 
 	return CreateTopicActionToBytes(&action)
 }

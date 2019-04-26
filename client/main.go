@@ -144,9 +144,9 @@ func WriteMessage(conn *net.TCPConn, topicName, partitionNum string, ack int8) {
 	log.Println("read reponse:", responseHeader.Code, string(responseHeader.Message[:]))
 }
 
-func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32) {
+func CreateTopic(conn *net.TCPConn, topicName string, partitionCount, replicaCount uint32, inSyncReplicas uint32) {
 	//生成meta数据
-	metaData := common.NewCreateTopicAction(topicName, partitionCount, replicaCount)
+	metaData := common.NewCreateTopicAction(topicName, partitionCount, replicaCount, inSyncReplicas)
 	// 生成body数据
 	bodyData := []byte{}
 
@@ -312,7 +312,7 @@ func main() {
 	} else if *action == "readMessage" {
 		ReadMessage(tcpConn, "testtopic", "0", 1, 5)
 	} else if *action == "createTopic" {
-		CreateTopic(tcpConn, "testtopic", 3, 3)
+		CreateTopic(tcpConn, "testtopic", 3, 3, 2)
 	} else if *action == "startSync" {
 		StartSyncTopic(tcpConn, *syncTopic)
 	} else {

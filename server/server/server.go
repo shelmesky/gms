@@ -169,8 +169,9 @@ func handleCreateTopicAction(client *common.Client, request *common.RequestHeade
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
 	partitionCount := action.PartitionCount
 	replicaCount := action.ReplicaCount
+	inSyncReplicas := action.InSyncReplicas
 
-	err := CreateTopicOnEtcd(topicName, partitionCount, replicaCount)
+	err := CreateTopicOnEtcd(topicName, partitionCount, replicaCount, inSyncReplicas)
 	if err != nil {
 		response = common.NewResponse(1, "FAILED", []byte{})
 	}

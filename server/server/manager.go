@@ -9,7 +9,7 @@ import (
 	"log"
 )
 
-func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount uint32) error {
+func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount, inSyncReplicas uint32) error {
 	var err error
 	var client *clientv3.Client
 
@@ -24,7 +24,7 @@ func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount uint32) er
 	kv := clientv3.NewKV(client)
 
 	key := fmt.Sprintf("/topics/%s", topicName)
-	value := makeTopicInfo(topicName, partitionCount, replicaCount)
+	value := makeTopicInfo(topicName, partitionCount, replicaCount, inSyncReplicas)
 
 	getResp, err := kv.Get(context.Background(), key)
 
@@ -46,11 +46,12 @@ func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount uint32) er
 	return nil
 }
 
-func makeTopicInfo(topicName string, partitionCount, replicaCount uint32) string {
+func makeTopicInfo(topicName string, partitionCount, replicaCount, inSyncReplicas uint32) string {
 	var topic common.Topic
 	topic.TopicName = topicName
 	topic.PartitionCount = partitionCount
 	topic.ReplicaCount = replicaCount
+	topic.InSyncReplicas = inSyncReplicas
 
 	jsonBytes, err := json.Marshal(topic)
 	if err != nil {
