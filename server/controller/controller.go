@@ -100,6 +100,8 @@ func ProcessTopics(topicName string) error {
 
 // 监听/brokers/id/目录的变化并处理，例如新增或删除
 func WatchBrokers() {
+	log.Println("start WatchBrokers...")
+
 	var err error
 
 	// watcher中使用新的etcd连接
@@ -118,8 +120,10 @@ func WatchBrokers() {
 			switch ev.Type {
 			case clientv3.EventTypePut:
 				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				HandleBrokerPut(ev.Kv.Key, ev.Kv.Value)
 			case clientv3.EventTypeDelete:
 				log.Printf("[%s] %q : %q\n", ev.Type, ev.Kv.Key, ev.Kv.Value)
+				HandleBrokerDelete(ev.Kv.Key, ev.Kv.Value)
 			}
 		}
 	}
@@ -127,6 +131,8 @@ func WatchBrokers() {
 
 // 监听/topics/目录并处理，例如新增或删除
 func WatchTopics() {
+	log.Debugln("start WatchTopics...")
+
 	var err error
 
 	client, err = etcd.New(etcd.Config{
@@ -415,6 +421,7 @@ func ControllerSendCreateTopic(key, value []byte) error {
 }
 
 func HandleLeaderChange(leaderChan <-chan bool) {
+	log.Debugln("start HandleLeaderChange...")
 	for leader := range leaderChan {
 		if leader == true {
 			isController = true
@@ -423,6 +430,14 @@ func HandleLeaderChange(leaderChan <-chan bool) {
 		}
 		log.Debugf("Leader: %t\n", leader)
 	}
+}
+
+func HandleBrokerPut(key, value []byte) {
+
+}
+
+func HandleBrokerDelete(key, value []byte) {
+
 }
 
 func runElection(ctx context.Context) (<-chan bool, error) {
