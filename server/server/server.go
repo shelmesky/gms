@@ -180,8 +180,6 @@ func handleCreateTopicAction(client *common.Client, request *common.RequestHeade
 	if err != nil {
 		log.Printf("handleCreateTopicAction() write data to [%s] failed: %v\n", client.Conn.RemoteAddr(), err)
 	}
-
-	log.Println("")
 }
 
 func handleStartSyncAction(client *common.Client, request *common.RequestHeader, action *common.StartSyncTopicAction) {
