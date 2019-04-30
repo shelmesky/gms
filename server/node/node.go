@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
-	"go.etcd.io/etcd/clientv3"
 	log "github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	"time"
 )
 

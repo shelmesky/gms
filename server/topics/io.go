@@ -5,6 +5,7 @@ import (
 	"github.com/shelmesky/gms/server/common"
 	disklog "github.com/shelmesky/gms/server/log"
 	"github.com/shelmesky/gms/server/utils"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"strconv"
 )
@@ -186,6 +187,8 @@ func ReadMessage(client *common.Client, topicName, partitionIndex string, target
 
 				// 根据partition序号找到Partition
 				partition := topic.GetPartition(partitionNum)
+
+				log.Warningf("$$$$$$$$$$$$$$$$ Topic [%s] partition [%s] HW is %d\n", topicName, partitionIndex, partition.HW)
 
 				// Partition的Log对象
 				Log := partition.GetLog()

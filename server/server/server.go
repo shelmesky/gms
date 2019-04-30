@@ -187,7 +187,7 @@ func handleStartSyncAction(client *common.Client, request *common.RequestHeader,
 	var response *common.Response
 
 	topicName := string(bytes.Trim(action.TopicName[:], "\x00"))
-	processTopicErr := controller.ProcessTopics(topicName)
+	processTopicErr := controller.ProcessTopicsForStartSync(topicName)
 
 	if processTopicErr != nil {
 		response = common.NewResponse(1, "FAILED", []byte{})

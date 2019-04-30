@@ -165,6 +165,14 @@ func FollowerStartSync(leaderInfo SetSYNCInfo) chan interface{} {
 			}
 
 			log.Warningln("FollowerStartSync() receive reply from server:", reply)
+
+			log.Println("&&&&&&&&&&&&&&&&&&&&&& FollowerStartSync receive HW:", reply.Meta.HW)
+
+			err = SaveHWToEtcd(leaderInfo.TopicName, leaderInfo.PartitionIndex, leaderInfo.ReplicaIndex, int(reply.Meta.HW))
+			if err != nil {
+				log.Println("FollowerStartSync() SaveHWToEtcd faield:", err)
+			}
+
 			// 服务器读取时发生错误
 			if reply.Code != 0 {
 				if reply.Code == 1 {

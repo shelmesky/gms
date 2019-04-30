@@ -24,12 +24,28 @@ func Hash(data []byte) uint64 {
 	return highwayhash.Sum64(data, key)
 }
 
-// 单个partition
-// 将为每个partition启动一个goroutine
+/*
+	单个partition
+ 	将为每个partition启动一个goroutine
+
+	ReplicasNum字段：
+	ReplicasNum在刚启动时是在RPCHandle_SYNC_MANAGER处理命令时获取第一次，
+	之后当每次监控到发生了某个节点离线，就会找到这个节点上所有的分区副本，
+	并将leader本地的Partition结构体的ReplicasNum减1.
+
+	HW字段:
+	如果是Follower， 每次接收消息都将消息体中来自Leader的HW属性值保存。
+	Follower启动一个goroutine， 负责将所有topic的所有分区的HW值定时保存在/topics-brokers/对应的KEY下面。
+
+	如果是Leader， 由HWManager起动一个goroutine来管理分区的HW并在消息同步中发送给Follower.
+	并在HWManager的goroutine之中， 定时将HW值保存在/topics-brokers/对应的KEY下面。
+*/
 type Partition struct {
-	dirName string           // 目录名
-	diskLog *disklog.DiskLog // 日志管理器
-	queue   chan []byte
+	dirName     string           // 目录名
+	diskLog     *disklog.DiskLog // 日志管理器
+	queue       chan []byte      // 每个Partition启动一个goroutine处理消息写入
+	HW          uint64           // 保存了当前节点上分区的HW
+	ReplicasNum int              // 作为leader副本保存了当前有几个follower副本
 }
 
 func (p *Partition) GetLog() *disklog.DiskLog {

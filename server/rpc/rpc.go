@@ -26,6 +26,7 @@ const (
 type RPCRequest struct {
 	Action   int
 	Version  int
+	Meta     RPCMeta
 	Checksum []byte
 }
 
@@ -33,7 +34,13 @@ type RPCRequest struct {
 type RPCReply struct {
 	Code   int
 	Result string
+	Meta   RPCMeta
 	Data   []byte
+}
+
+type RPCMeta struct {
+	HW       uint64
+	Revision int
 }
 
 // 分配给单个node的分区和副本信息
@@ -44,6 +51,7 @@ type NodePartitionReplicaInfo struct {
 	PartitionIndex int    `json:"partition_index"`
 	ReplicaIndex   int    `json:"replica_index"`
 	IsLeader       bool   `json:"is_leader"`
+	HW             int    `json:"hw"`
 }
 
 func RPCHandleConnection(conn *net.TCPConn) {
@@ -136,6 +144,30 @@ func RPCHandle_SYNC(encoder *gob.Encoder, decoder *gob.Decoder, conn *net.TCPCon
 	partitionIndex := strconv.Itoa(follower.PartitionIndex)
 	offset := uint32(follower.Offset)
 	count := uint32(follower.Count)
+
+	// 将当前follower的RPC请求信息发送到统计HW的channel
+	var offsetEntry OffsetEntry
+
+	tempTopic := topics.TopicManager.GetTopic(follower.TopicName)
+	if tempTopic != nil {
+		tempPartition := tempTopic.GetPartition(follower.PartitionIndex)
+		if tempPartition != nil {
+			offsetEntry.TopicName = follower.TopicName
+			offsetEntry.PartitionIdx = follower.PartitionIndex
+			offsetEntry.ReplicaIdx = follower.Replica
+			offsetEntry.Offset = follower.Offset
+			offsetEntry.ReplicaNum = tempPartition.ReplicasNum
+
+			err = PartitionHWManager.Add(offsetEntry)
+			if err != nil {
+				log.Errorln("RPCHandle_SYNC() -> PartitionHWManager.Add() failed:", err)
+			}
+		}
+	}
+
+	hw := PartitionHWManager.GetPartitionHW(follower.TopicName, follower.PartitionIndex)
+	log.Println("&&&&&&&&&&&&&&&&&&&&&& RPCHandle_SYNC() GetPartitionHW:", hw)
+	rpcReply.Meta.HW = hw
 
 	/*
 		通过topic名称， 分区编号， 消息的offset查找在SYNC_MANAGER阶段添加到Follower Manager的follower，
@@ -327,6 +359,26 @@ func RPCHandle_SYNC_MANAGER(encoder *gob.Encoder, decoder *gob.Decoder, conn *ne
 		return err
 	}
 
+	// 计算当前分区副本的数量并保存在partition.Partition.ReplicasNum
+	// 这是进程刚启动时第一次保存这个值， 之后当节点离线时会更新这个值。
+	topicName := syncManager.TopicName
+	partitionIdx := syncManager.PartitionIndex
+	key := fmt.Sprintf("/topics-brokers/%s/partition-%d/", topicName, partitionIdx)
+	getResp, err := common.ETCDGetKey(key, true)
+	if err == nil {
+		replicasNum := len(getResp.Kvs)
+		if replicasNum > 0 {
+			topic := topics.TopicManager.GetTopic(topicName)
+			if topic != nil {
+				tempPartition := topic.GetPartition(partitionIdx)
+				// 设置一个分区的follower副本数量为所有副本数量-1(减去leader)
+				tempPartition.ReplicasNum = replicasNum - 1
+				log.Printf("RPCHandle_SYNC_MANAGER() set [%s -> partition-%d -> replica-%d] replicasNum to %d\n",
+					topicName, partitionIdx, syncManager.ReplicaIndex, tempPartition.ReplicasNum)
+			}
+		}
+	}
+
 	var follower Follower
 	follower.TopicName = syncManager.TopicName
 	follower.PartitionIndex = syncManager.PartitionIndex
@@ -474,9 +526,11 @@ type SetSYNCManager struct {
 	ReplicaIndex   int
 }
 
-// list中保存的是etcd中topic的列表
-// 根据分区x副本的数量得到所有副本列表
-// 再将这些信息通知需要向副本leader同步的节点
+/*
+ list中保存的是etcd中topic的列表
+ 根据分区x副本的数量得到所有副本列表
+ 再将这些信息通知需要向leader副本同步的节点
+*/
 func SendSetSYNC(topicList []*mvccpb.KeyValue) error {
 	var topic common.Topic
 	var err error

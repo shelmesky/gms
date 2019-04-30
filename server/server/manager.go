@@ -32,10 +32,12 @@ func CreateTopicOnEtcd(topicName string, partitionCount, replicaCount, inSyncRep
 		return fmt.Errorf("%s: get %s from etcd failed\n", err, key)
 	}
 
+	// 如果etcd已经存topic目录则返回错误
 	if len(getResp.Kvs) > 0 {
 		return fmt.Errorf("key %s already exits!\n", key)
 	}
 
+	// 将topic的基本信息保存到etcd
 	putResp, err := kv.Put(context.Background(), key, value)
 
 	if err != nil {

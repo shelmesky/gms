@@ -59,7 +59,7 @@ func Start() {
 // 并告诉每个节点需要同步的副本leader
 // topicName为all表明开始所有topic的同步
 // 否则为具体某个topic
-func ProcessTopics(topicName string) error {
+func ProcessTopicsForStartSync(topicName string) error {
 	var err error
 	var key string
 
@@ -74,6 +74,7 @@ func ProcessTopics(topicName string) error {
 
 	kv := clientv3.NewKV(client)
 
+	// 从/topics/获取topic的基本信息
 	if topicName == "all" {
 		key = "/topics/"
 	} else {
@@ -87,6 +88,7 @@ func ProcessTopics(topicName string) error {
 
 	log.Printf("ProcessTopics() got [%d] topics from etcd.", len(getResp.Kvs))
 
+	// 调用RPC客户端发送同步所需的信息给各follower节点
 	err = rpc.SendSetSYNC(getResp.Kvs)
 	if err != nil {
 		return fmt.Errorf("ProcessTopics() call SendSYNCSet() failed: %s\n", err.Error())
@@ -210,11 +212,13 @@ func generateDisList(nodeCount int, allReplicaCount int) []int {
 }
 
 /*
-Controller发送创建topic的指令给各node.
-1. 查询当前节点是不是controller， 不是则不处理
-2. 在etcd中查询当前的节点数量
-3. 如果节点数量小于replica数量则不创建
-4. 根据节点的数量， 按照partition的排序，以此将创建副本的命令发送给node
+Controller调用RCP客户端发送创建topic和分区的指令给各node.
+1. 查询当前节点是不是controller， 不是则不处理。
+2. 在etcd中查询当前的节点数量。
+3. 如果节点数量小于replica数量则不创建。
+4. 在/topics-brokers/topicName/partition-x/replica-x保存主题-分区-副本的详细信息。
+5. 在/brokers-topics/nodeID/topicName-partitionX-replicaX保存某个nodeID下负责的分区副本。
+7. 根据节点的数量， 按照partition的排序，以此将创建分区副本的命令发送给node， node收到后在本地磁盘初始化分区副本。
 */
 func ControllerSendCreateTopic(key, value []byte) error {
 	if !isController {

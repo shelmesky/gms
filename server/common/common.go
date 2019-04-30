@@ -372,6 +372,38 @@ type Node struct {
 	StartTime int64  `json:"start_time"`
 }
 
+func ETCDPutKey(key, value string) (*etcd.PutResponse, error) {
+	var err error
+	var client *etcd.Client
+	var resp *etcd.PutResponse
+
+	if len(key) == 0 || len(value) == 0 {
+		return resp, fmt.Errorf("ETCDPutKey() key or value is empty.")
+	}
+
+	// 使用新的etcd连接
+	client, err = etcd.New(etcd.Config{
+		Endpoints: []string{GlobalConfig.EtcdServer},
+	})
+
+	if err != nil {
+		err = errors.Wrap(err, "ETCDPutKey() connect to etcd failed")
+		return resp, err
+	}
+
+	kv := etcd.NewKV(client)
+
+	resp, err = kv.Put(context.Background(), key, value)
+
+	if err != nil {
+		err = fmt.Errorf("ETCDPutKeys() put key [%s] value [%s] failed:", key, value, err)
+		return resp, err
+	}
+
+	return resp, nil
+
+}
+
 func ETCDGetKey(key string, withPrefix bool) (*etcd.GetResponse, error) {
 	var err error
 	var client *etcd.Client
@@ -396,7 +428,7 @@ func ETCDGetKey(key string, withPrefix bool) (*etcd.GetResponse, error) {
 	}
 
 	if err != nil {
-		err = fmt.Errorf("ETCDGetKeys() %s: get %s from etcd failed\n", err, key)
+		err = fmt.Errorf("ETCDGetKeys() get [%s] from etcd failed: %s\n", key, err)
 		return resp, err
 	}
 
@@ -404,7 +436,7 @@ func ETCDGetKey(key string, withPrefix bool) (*etcd.GetResponse, error) {
 }
 
 // 获取etcd中所有节点的列表
-func GetAllNodes() ([]Node, error) {
+func GetAllNodesList() ([]Node, error) {
 	var nodeList []Node
 	var err error
 
