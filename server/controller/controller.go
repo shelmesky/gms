@@ -305,13 +305,13 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		nodeParRepList[idx].TopicName = topicInfo.TopicName
 	}
 
-	getPartitionReplicaInfoByNodeID := func(nodeID string) (string, error) {
+	getPartitionReplicaInfoByNodeID := func(nodeID string, partitionIdx, replicaIdx int) (string, error) {
 		var ret string
 		var item *rpc.NodePartitionReplicaInfo
 
 		for idx := range nodeParRepList {
 			item = nodeParRepList[idx]
-			if item.NodeID == nodeID {
+			if item.NodeID == nodeID && item.PartitionIndex == partitionIdx && item.ReplicaIndex == replicaIdx {
 				break
 			}
 		}
@@ -339,7 +339,8 @@ func ControllerSendCreateTopic(key, value []byte) error {
 		tempNodeParRep := nodeParRepList[idx]
 		key := fmt.Sprintf("/brokers-topics/%s/%s-partition%d-replica%d", tempNodeParRep.NodeID, tempNodeParRep.TopicName,
 			tempNodeParRep.PartitionIndex, tempNodeParRep.ReplicaIndex)
-		value, err := getPartitionReplicaInfoByNodeID(tempNodeParRep.NodeID)
+		value, err := getPartitionReplicaInfoByNodeID(tempNodeParRep.NodeID,
+			tempNodeParRep.PartitionIndex, tempNodeParRep.ReplicaIndex)
 		if err != nil {
 			log.Println("getPartitionReplicaInfoByNodeID() failed:", err)
 			continue
