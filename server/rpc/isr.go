@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/utils"
@@ -101,6 +102,49 @@ func (this *FollowerManager) UpdateISR(follower *Follower, updateWriteTimestamp 
 	} else {
 		follower.IsISR = false
 	}
+
+	// 更新在etcd中某个follower的is_isr标志， 这个标志在副本leader离线发生leader选举时用到
+	err := this.UpdateETCISR(follower.TopicName, follower.PartitionIndex, follower.Replica, follower.IsISR)
+	if err != nil {
+		log.Println("FollowerManager() -> UpdateISR -> UpdateETCISR faield:", err)
+	}
+}
+
+func (this *FollowerManager) UpdateETCISR(topicName string, partitionIdx, replicaIdx int, isISR bool) error {
+	key := fmt.Sprintf("/topics-brokers/%s/partition-%d/replica-%d", topicName, partitionIdx, replicaIdx)
+
+	getResp, err := common.ETCDGetKey(key, false)
+	if err != nil {
+		return err
+	}
+
+	if len(getResp.Kvs) == 0 {
+		return fmt.Errorf("FollowerManager.UpdateETCISR() -> ETCDGetKey failed:", err)
+	}
+
+	valueBytes := getResp.Kvs[0].Value
+	if len(valueBytes) == 0 {
+		return fmt.Errorf("FollowerManager.UpdateETCISR() value from etcd is empty")
+	}
+
+	var topicParReplicaInfo NodePartitionReplicaInfo
+	err = json.Unmarshal(valueBytes, &topicParReplicaInfo)
+	if err != nil {
+		return err
+	}
+
+	topicParReplicaInfo.IsISR = isISR
+	jsonBytes, err := json.Marshal(topicParReplicaInfo)
+	if err != nil {
+		return err
+	}
+
+	_, err = common.ETCDPutKey(key, string(jsonBytes))
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (this *FollowerManager) PutOffset(follower Follower, updateWriteTimestamp bool) error {
