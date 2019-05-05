@@ -520,8 +520,11 @@ func HandleBrokerDelete(key, value []byte) error {
 					}
 
 					/*
+						0. 在/topics-brokers/partition-x/status中更新状态为不可用.
 						1. 选取第一个是ISR状态的副本作为leader， 并更新其is_leader标志为true.
 						2. 因为每个leader否启动了FollowerManager， 所以旧leader负责的副本需要转移到新leader上负责.
+						3. 告诉其他follower新的leader地址， 重新开始与新的leader同步.
+						4. 在/topics-brokers/partition-x/status中更新状态为可用.
 					*/
 					if topicPartReplicaInfo.IsISR == true {
 						topicPartReplicaInfo.IsLeader = true
