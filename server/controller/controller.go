@@ -7,6 +7,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/shelmesky/gms/server/common"
 	"github.com/shelmesky/gms/server/rpc"
+	"path/filepath"
 
 	//	"github.com/shelmesky/gms/server/server"
 	log "github.com/sirupsen/logrus"
@@ -441,8 +442,108 @@ func HandleBrokerPut(key, value []byte) {
 
 }
 
-func HandleBrokerDelete(key, value []byte) {
+/*
+当某个节点不在etcd中的注册消失后， 检查这个节点上负责的分区副本，
+如果有leader副本， 则需要说明某个分区的leader离开， 需要选择选举新的leader副本。
+*/
+func HandleBrokerDelete(key, value []byte) error {
+	var err error
 
+	// 获取新离线节点负责的分区副本列表
+	nodePath := string(key)
+	nodeID := filepath.Base(nodePath)
+	nodeKey := fmt.Sprintf("/brokers-topics/%s/", nodeID)
+	getResp, err := common.ETCDGetKey(nodeKey, true)
+	if err != nil {
+		log.Println("HandleBrokerDelete() ETCDGetKey failed:", err)
+		return err
+	}
+
+	if len(getResp.Kvs) > 0 {
+		// 循环节点负责的副本列表
+		for idx := range getResp.Kvs {
+			var nodePartReplicaInfo rpc.NodePartitionReplicaInfo
+
+			valueBytes := getResp.Kvs[idx].Value
+			if len(valueBytes) < 0 {
+				continue
+			}
+			err = json.Unmarshal(valueBytes, &nodePartReplicaInfo)
+			if err != nil {
+				log.Println("HandleBrokerDelete() json.Unmarshal failed:", err)
+				return err
+			}
+
+			// 如果其中有leader副本
+			if nodePartReplicaInfo.IsLeader {
+				leaderPartitionIdx := nodePartReplicaInfo.PartitionIndex
+				leaderReplicaIdx := nodePartReplicaInfo.ReplicaIndex
+				topicKey := fmt.Sprintf("/topics-brokers/partition-%d/", leaderPartitionIdx)
+				topicGetResp, err := common.ETCDGetKey(topicKey, true)
+				if err != nil {
+					log.Println("HandleBrokerDelete() ETCDGetKey failed:", err)
+					return err
+				}
+
+				if len(topicGetResp.Kvs) < 0 {
+					continue
+				}
+				// 在/topics-brokers/目录下寻找离线的leader副本所属的分区序号下的副本列表
+				// 在所有的副本列表当中寻找ISR列表， 从ISR列表中选择一个做为leader
+				for idx := range topicGetResp.Kvs {
+					var topicPartReplicaInfo rpc.NodePartitionReplicaInfo
+					keyBytes := topicGetResp.Kvs[idx].Key
+					valueBytes := topicGetResp.Kvs[idx].Value
+					err = json.Unmarshal(valueBytes, &topicPartReplicaInfo)
+					if err != nil {
+						log.Println("HandleBrokerDelete() json.Unmarshal failed:", err)
+						return err
+					}
+
+					// 排除之前已经离线的leader副本， 并在etcd当中取消其is_leader标志.
+					if topicPartReplicaInfo.ReplicaIndex == leaderReplicaIdx {
+						topicPartReplicaInfo.IsLeader = false
+						jsonBytes, err := json.Marshal(topicPartReplicaInfo)
+						if err != nil {
+							log.Println("HandleBrokerDelete() json.Unmarshal failed:", err)
+							return err
+						}
+
+						keyString := string(keyBytes)
+						_, err = common.ETCDPutKey(keyString, string(jsonBytes))
+						if err != nil {
+							log.Println("HandleBrokerDelete() ETCDPutKey failed:", err)
+							return err
+						}
+
+						continue
+					}
+
+					/*
+						1. 选取第一个是ISR状态的副本作为leader， 并更新其is_leader标志为true.
+						2. 因为每个leader否启动了FollowerManager， 所以旧leader负责的副本需要转移到新leader上负责.
+					*/
+					if topicPartReplicaInfo.IsISR == true {
+						topicPartReplicaInfo.IsLeader = true
+						jsonBytes, err := json.Marshal(topicPartReplicaInfo)
+						if err != nil {
+							log.Println("HandleBrokerDelete() json.Unmarshal failed:", err)
+							return err
+						}
+
+						keyString := string(keyBytes)
+						_, err = common.ETCDPutKey(keyString, string(jsonBytes))
+						if err != nil {
+							log.Println("HandleBrokerDelete() ETCDPutKey failed:", err)
+							return err
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func runElection(ctx context.Context) (<-chan bool, error) {

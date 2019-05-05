@@ -52,6 +52,7 @@ type NodePartitionReplicaInfo struct {
 	ReplicaIndex   int    `json:"replica_index"`
 	IsLeader       bool   `json:"is_leader"`
 	HW             int    `json:"hw"`
+	IsISR          bool   `json:"is_isr"`
 }
 
 func RPCHandleConnection(conn *net.TCPConn) {
