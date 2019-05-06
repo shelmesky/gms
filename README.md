@@ -28,7 +28,7 @@ GMS是一个分布式的消息系统，支持集群和多副本，支持可靠�
 
 节点启动的第一件事就是初始化数据目录，类似与`/data/mytopic/mytopic-0/`这样的3级目录。第一层是最上层的数据目录，第二层是topic的名称，第三层是分区的序号。一个分区目录下不会只有一个消息文件，因为那样会变得很大，载入内存和操纵它都会很麻烦。所以将数据组织为多个segment组成，每个segment分为一个log文件和一个index文件。log文件负责存储真正的消息， index文件负责记录消息的索引。目录结构如下图：
 
-![2019-05-05_23-19](_v_images/20190505231950720_414384678.png)
+![2019-05-05_23-19](https://github.com/shelmesky/gms/raw/master/images/2019-05-06_14-58.png)
 
 文件名代表了当前log或index文件保存的消息的起始offset，长度是64位。consumer读取消息时，会在内存中将排序好的文件名列表和consumer请求的offset做二分查找，找到对应的文件读取。
 
@@ -144,7 +144,7 @@ func waitDelete(ctx context.Context, client *v3.Client, key string, rev int64) e
 
 当节点启动完毕，在etcd注册了所有监听路径，并创建完成topic后，etcd中的存储内容如下：
 
-![2019-05-06_14-44](_v_images/20190506144507107_1626803986.png)
+![2019-05-06_14-44](https://raw.githubusercontent.com/shelmesky/gms/master/images/2019-05-06_14-44.png)
 
 #### 3.5 follower开始同步leader的数据
 
