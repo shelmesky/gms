@@ -20,7 +20,14 @@ GMS是一个分布式的消息系统，支持集群和多副本，支持可靠�
 - ACK: producer发送消息时，可以在参数中指定ACK，代表producer希望这个消息获得怎么样的确认。ACK为0是不确认，producer发送消息给server后不用等待server的响应。ACK为1是只用等待leader副本一个节点的响应即可。如果ACK是-1,  且leader维护的ISR列表的数量大于全局ISR或者分区设置的ISR，则以全局ISR或者分区ISR参数作为需要等待同步的数量；如果leader维护的ISR列表的数量小于全局ISR或者分区设置的ISR，则以当前ISR列表的数量为准。所以默认最少要等待leader自己写入到磁盘，客户端才能认为消息写入成功。
 
 ### 2. 架构
-架构图
+
+#### 2.1 全局架构
+
+![2019-05-05_23-19](https://github.com/shelmesky/gms/raw/master/images/GMS-architecture.png)
+
+#### 2.2 内部命令处理流程图
+
+![2019-05-05_23-19](https://github.com/shelmesky/gms/raw/master/images/all_command.png)
 
 ### 3. 工作过程
 
