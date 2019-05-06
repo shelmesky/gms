@@ -15,6 +15,7 @@ GMS是一个分布式的消息系统，支持集群和多副本，支持可靠�
 - topic: 消息服务器中某个主题.
 - 分区和副本：一个topic可以在物理上分为n个分区，所有分区功能相同。每个分区也可以用n个副本，n个副本中有一个是leader副本，其他是follower副本。follower副本向leader副本同步数据。
 - log和segment: 分区在磁盘上表现为n个segment，每个segment是一个log文件和index文件。index文件将通过内存映射文件的方式载入，它提供了查找log文件的索引。log和index文件都是固定大小。只有写入消息的segment是以读写方式打开，其他的segment是以只读方式打开。
+- Controller:  整个集群的控制器，只会存在一个，当前Controller离线时其他节点会尝试注册成为新的Controller。负责集群内的分区创建、副本选举等功能。
 - ISR: In Sync Replica的缩写，指的是多个follower副本中和leader同步的副本列表。处于同步状态的要求是: 10秒中内获取过数据，并且从开始获取到返回响应的时间不超过200毫秒。发送消息时，producer可以根据ACK参数指定需要同步的副本数量，待足够数量的副本同步了此消息后，server才返回完成状态给producer。
 - HW: 高水位，指的是producer发送消息给server后，server将这个消息写入到磁盘，offset增加。然后server等待所有follower都同步了这个offset以后，在内存中更新这个分区的HW，leader将HW写入到etcd。下次leader给follower返回数据时会带上当前分区的HW，follower收到后，也会写入到内存和etcd. 最后当consumer在leader副本上获取数据时，会将请求的offset和当前的HW对比，小于等于HW的数据才是可靠的。
 - ACK: producer发送消息时，可以在参数中指定ACK，代表producer希望这个消息获得怎么样的确认。ACK为0是不确认，producer发送消息给server后不用等待server的响应。ACK为1是只用等待leader副本一个节点的响应即可。如果ACK是-1,  且leader维护的ISR列表的数量大于全局ISR或者分区设置的ISR，则以全局ISR或者分区ISR参数作为需要等待同步的数量；如果leader维护的ISR列表的数量小于全局ISR或者分区设置的ISR，则以当前ISR列表的数量为准。所以默认最少要等待leader自己写入到磁盘，客户端才能认为消息写入成功。
@@ -43,7 +44,19 @@ GMS是一个分布式的消息系统，支持集群和多副本，支持可靠�
 
 #### 3.2 注册当前节点：
 
-在etcd的`/brokers/ids/xxx`注册lease机制的key，保存当前节点的信息：`{"ip_address":"127.0.0.1","port":50051,"rpc_port":50052,"node_id":"node-0","start_time":1557046846}`。lease节点不同于普通的key，注册成功后如果在指定时间不续约，则lease节点会被删除。这里需要启动一个goroutine定期续约。
+在etcd的`/brokers/ids/xxx`注册lease机制的key，保存当前节点的信息：
+
+```json
+{
+    "ip_address":"127.0.0.1",
+    "port":50051,
+    "rpc_port":50052,
+    "node_id":"node-0",
+    "start_time":1557046846
+}
+```
+
+lease节点不同于普通的key，注册成功后如果在指定时间不续约，则lease节点会被删除。这里需要启动一个goroutine定期续约。
 
 #### 3.3 尝试注册成为controller
 在`/controller-election/`目录下注册，并尝试成为controler。每个节点都会在该目录下成功创建key， 但只有当前节点观察到key的revision是最小的时候，才会认为自己成为了controller，否则会阻塞并等待。这样就带来了一个好处，这种形式类似与FIFO，最先注册的节点就会最早成为controller，如果观察到当前创建key的revision是最小的，则认为自己是controller.
